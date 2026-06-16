@@ -13,18 +13,18 @@ const CONFIG = {
   //  → Tu proyecto → Settings → API
   // ============================================================
   supabase: {
-    url: 'TU_SUPABASE_URL',          // Ej: https://abcxyz.supabase.co
-    anonKey: 'TU_SUPABASE_ANON_KEY'  // Tu clave anónima pública
+    url: 'sb_publishable_zirB8ry92qrSdD_Z6tscqg_Kp9G1-s2',          // Ej: https://abcxyz.supabase.co
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZXd0aHp5cGZ1ZWZ6bGNwbWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NjUyNjcsImV4cCI6MjA5NzE0MTI2N30.SNVxTiqURcl9E_SRaYM5QryEFC-Kqr8-KFJ8Upw5lUs'  // Tu clave anónima pública
   },
 
   // ============================================================
   //  🏪 INFORMACIÓN DEL NEGOCIO
   // ============================================================
   business: {
-    name:      'Cortes Zahir',
-    tagline:   'Estilo & Precisión',
-    address:   'Tu dirección aquí',
-    phone:     '+56 9 0000 0000',
+    name: 'Cortes Zahir',
+    tagline: 'Estilo & Precisión',
+    address: 'Tu dirección aquí',
+    phone: '+56 9 0000 0000',
     instagram: '@corteszahir'
   },
 
@@ -56,12 +56,12 @@ const CONFIG = {
   // ============================================================
   services: [
     {
-      id:          'corte',
-      name:        'Corte de pelo',
+      id: 'corte',
+      name: 'Corte de pelo',
       description: 'Corte clásico o moderno a tu elección',
-      duration:    45,
-      price:       null,   // null = no mostrar precio
-      icon:        '✂️'
+      duration: 45,
+      price: null,   // null = no mostrar precio
+      icon: '✂️'
     }
     // Agrega más servicios aquí si lo necesitás:
     // {
