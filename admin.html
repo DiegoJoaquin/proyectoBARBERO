@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#C9A84C">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Cortes Zahir — Panel del Barbero</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-page">
+
+  <!-- ══ LOGIN SCREEN ════════════════════════════════════════ -->
+  <div id="loginScreen" class="login-screen" role="main">
+    <div class="login-card">
+      <div class="login-icon" aria-hidden="true">💈</div>
+      <h1 class="login-title">Cortes Zahir</h1>
+      <p class="login-subtitle">Panel del Barbero</p>
+
+      <!-- PIN Dots -->
+      <div class="pin-display" id="pinDisplay" role="status" aria-label="Ingresá tu PIN">
+        <span class="pin-dot" id="pd0"></span>
+        <span class="pin-dot" id="pd1"></span>
+        <span class="pin-dot" id="pd2"></span>
+        <span class="pin-dot" id="pd3"></span>
+      </div>
+
+      <!-- PIN Keyboard -->
+      <div class="pin-keyboard" role="group" aria-label="Teclado numérico">
+        <button class="pin-key" data-key="1" aria-label="1">1</button>
+        <button class="pin-key" data-key="2" aria-label="2">2</button>
+        <button class="pin-key" data-key="3" aria-label="3">3</button>
+        <button class="pin-key" data-key="4" aria-label="4">4</button>
+        <button class="pin-key" data-key="5" aria-label="5">5</button>
+        <button class="pin-key" data-key="6" aria-label="6">6</button>
+        <button class="pin-key" data-key="7" aria-label="7">7</button>
+        <button class="pin-key" data-key="8" aria-label="8">8</button>
+        <button class="pin-key" data-key="9" aria-label="9">9</button>
+        <button class="pin-key pin-key--clear" data-key="clear" aria-label="Limpiar">CLR</button>
+        <button class="pin-key" data-key="0" aria-label="0">0</button>
+        <button class="pin-key pin-key--delete" data-key="del" aria-label="Borrar">⌫</button>
+      </div>
+
+      <p class="pin-error hidden" id="pinError" role="alert">PIN incorrecto. Intentá de nuevo.</p>
+    </div>
+  </div>
+
+  <!-- ══ DASHBOARD ══════════════════════════════════════════ -->
+  <div id="dashboard" class="dashboard hidden" role="main">
+
+    <!-- Header -->
+    <header class="dash-header">
+      <div class="dash-header__brand">
+        <span class="dash-header__icon" aria-hidden="true">💈</span>
+        <span>Cortes Zahir</span>
+      </div>
+      <div class="dash-header__actions">
+        <button class="btn btn--ghost btn--sm" id="logoutBtn" aria-label="Cerrar sesión">Salir</button>
+      </div>
+    </header>
+
+    <!-- Demo Banner (shown when no Supabase) -->
+    <div id="adminDemoBanner" class="demo-banner hidden">
+      ⚠️ Modo Demo — datos guardados solo en este dispositivo.
+    </div>
+
+    <!-- Stats -->
+    <section class="stats-bar" aria-label="Estadísticas del día">
+      <div class="stat">
+        <span class="stat__value stat__value--gold" id="statTotal">0</span>
+        <span class="stat__label">Total</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value stat__value--yellow" id="statPending">0</span>
+        <span class="stat__label">Pendientes</span>
+      </div>
+      <div class="stat">
+        <span class="stat__value stat__value--green" id="statCompleted">0</span>
+        <span class="stat__label">Hechos</span>
+      </div>
+    </section>
+
+    <!-- Date Navigation -->
+    <nav class="date-nav" aria-label="Navegación de fecha">
+      <button class="date-nav__btn" id="prevDay" aria-label="Día anterior">‹</button>
+      <div class="date-nav__center">
+        <div class="date-nav__label" id="navLabel">Hoy</div>
+        <div class="date-nav__date" id="navDate">—</div>
+      </div>
+      <button class="date-nav__btn" id="nextDay" aria-label="Día siguiente">›</button>
+    </nav>
+    <div class="date-nav__today">
+      <button class="date-nav__today-btn" id="goToday">Ir a hoy</button>
+    </div>
+
+    <!-- Section Label -->
+    <div class="section-label">Agenda del día</div>
+
+    <!-- Timeline -->
+    <section class="timeline" id="timeline" aria-label="Turnos del día" aria-live="polite">
+      <div class="empty-state">
+        <div class="empty-state__icon">📅</div>
+        <div class="empty-state__title">Cargando agenda…</div>
+      </div>
+    </section>
+
+    <!-- FAB: Add appointment -->
+    <div class="fab-group">
+      <button class="fab fab--secondary" id="blockSlotBtn" title="Bloquear horario" aria-label="Bloquear horario">🔒</button>
+      <button class="fab" id="addApptBtn" title="Agregar turno" aria-label="Agregar turno manualmente">+</button>
+    </div>
+
+  </div>
+
+  <!-- ══ MODAL: Add Appointment ══════════════════════════════ -->
+  <div class="admin-modal-overlay" id="addModal" role="dialog" aria-modal="true" aria-label="Agregar turno">
+    <div class="admin-modal">
+      <div class="admin-modal__handle"></div>
+      <div class="admin-modal__title">
+        <span>✂️</span>Agregar turno
+      </div>
+
+      <div class="form-group">
+        <label for="addName">Nombre del cliente</label>
+        <input type="text" id="addName" placeholder="Ej: Juan Pérez" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="addPhone">Teléfono</label>
+        <input type="tel" id="addPhone" placeholder="+56 9 0000 0000" autocomplete="off">
+      </div>
+      <div class="form-group">
+        <label for="addDate">Fecha</label>
+        <input type="date" id="addDate" class="admin-date-input">
+      </div>
+      <div class="form-group">
+        <label for="addTime">Horario</label>
+        <select id="addTime" class="admin-modal select">
+          <option value="">Seleccioná primero la fecha</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="addNotes">Notas (opcional)</label>
+        <textarea id="addNotes" rows="2" placeholder="Indicaciones especiales…"></textarea>
+      </div>
+
+      <div class="admin-modal__actions">
+        <button class="btn btn--ghost" id="addModalCancel">Cancelar</button>
+        <button class="btn btn--primary" id="addModalConfirm">
+          <span id="addBtnLabel">Guardar turno</span>
+          <span id="addBtnSpinner" class="spinner hidden"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Block Slot ═══════════════════════════════════ -->
+  <div class="admin-modal-overlay" id="blockModal" role="dialog" aria-modal="true" aria-label="Bloquear horario">
+    <div class="admin-modal">
+      <div class="admin-modal__handle"></div>
+      <div class="admin-modal__title">
+        <span>🔒</span>Bloquear horario
+      </div>
+
+      <div class="form-group">
+        <label for="blockDate">Fecha</label>
+        <input type="date" id="blockDate" class="admin-date-input">
+      </div>
+      <div class="form-group">
+        <label for="blockStart">Desde</label>
+        <select id="blockStart" class="admin-modal select">
+          <option value="">Seleccioná primero la fecha</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="blockEnd">Hasta</label>
+        <select id="blockEnd" class="admin-modal select">
+          <option value="">Seleccioná desde primero</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="blockReason">Motivo (opcional)</label>
+        <input type="text" id="blockReason" placeholder="Ej: Almuerzo, Reunión…" autocomplete="off">
+      </div>
+
+      <div class="admin-modal__actions">
+        <button class="btn btn--ghost" id="blockModalCancel">Cancelar</button>
+        <button class="btn btn--primary" id="blockModalConfirm">
+          <span id="blockBtnLabel">Bloquear</span>
+          <span id="blockBtnSpinner" class="spinner hidden"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL: Appointment Detail ═══════════════════════════ -->
+  <div class="admin-modal-overlay" id="detailModal" role="dialog" aria-modal="true" aria-label="Detalle del turno">
+    <div class="admin-modal">
+      <div class="admin-modal__handle"></div>
+      <div class="admin-modal__title" id="detailTitle">
+        <span>📋</span>Detalle del turno
+      </div>
+      <div id="detailBody"></div>
+      <div class="admin-modal__actions" id="detailActions"></div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- Supabase CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>

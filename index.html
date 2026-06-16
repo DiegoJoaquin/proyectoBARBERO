@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#C9A84C">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Cortes Zahir — Reserva tu turno</title>
+  <meta name="description" content="Reserva tu turno en Cortes Zahir. Corte de pelo profesional con estilo y precisión. Agenda rápida y fácil desde tu celular.">
+  <link rel="manifest" href="manifest.json">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="client-page">
+
+  <!-- Demo Banner -->
+  <div id="demoBanner" class="demo-banner hidden">
+    ⚠️ Modo Demo — los datos se guardan solo en este dispositivo.
+    <a href="SETUP.md" target="_blank">Ver cómo conectar Supabase →</a>
+  </div>
+
+  <!-- ══ HERO ═══════════════════════════════════════════════ -->
+  <main class="hero" id="heroSection">
+    <div class="hero__bg" id="heroBg"></div>
+    <div class="hero__overlay"></div>
+
+    <div class="hero__content">
+      <div class="hero__brand">
+        <div class="hero__icon" aria-hidden="true">💈</div>
+        <h1 class="hero__title">Cortes Zahir</h1>
+        <div class="hero__divider">✦</div>
+        <p class="hero__subtitle">Estilo &amp; Precisión</p>
+      </div>
+
+      <div class="hero__cta">
+        <button class="btn btn--primary btn--lg" id="openBookingBtn" aria-label="Abrir formulario de reserva">
+          <span>Reservar turno</span>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <p class="hero__hint" id="heroHint">Cargando disponibilidad…</p>
+      </div>
+    </div>
+  </main>
+
+  <!-- ══ BOOKING MODAL ═══════════════════════════════════════ -->
+  <div class="modal-overlay" id="bookingModal" role="dialog" aria-modal="true" aria-label="Formulario de reserva">
+    <div class="modal">
+      <div class="modal__handle" aria-hidden="true"></div>
+      <button class="modal__close" id="closeModalBtn" aria-label="Cerrar">✕</button>
+
+      <!-- Progress -->
+      <div class="modal__progress" aria-hidden="true">
+        <div class="progress-steps">
+          <div class="progress-step active" id="ps1">1</div>
+          <div class="progress-line" id="pl1"></div>
+          <div class="progress-step" id="ps2">2</div>
+          <div class="progress-line" id="pl2"></div>
+          <div class="progress-step" id="ps3">3</div>
+        </div>
+      </div>
+
+      <!-- ── STEP 1: Servicio ── -->
+      <section class="step-panel" id="step1" aria-label="Paso 1: Elegí tu servicio">
+        <h2>Elegí tu servicio ✂️</h2>
+        <div class="services-grid" id="servicesGrid" role="listbox" aria-label="Servicios disponibles"></div>
+        <button class="btn btn--primary btn--full" id="step1Next" disabled>Continuar →</button>
+      </section>
+
+      <!-- ── STEP 2: Fecha y Hora ── -->
+      <section class="step-panel hidden" id="step2" aria-label="Paso 2: Elegí fecha y hora">
+        <h2>Elegí fecha y hora 📅</h2>
+
+        <div class="calendar-wrapper">
+          <div class="calendar-header">
+            <button class="calendar-nav-btn" id="calPrev" aria-label="Mes anterior">‹</button>
+            <h3 id="calTitle">Junio 2026</h3>
+            <button class="calendar-nav-btn" id="calNext" aria-label="Mes siguiente">›</button>
+          </div>
+          <div class="calendar-grid" id="calGrid" role="grid" aria-label="Calendario"></div>
+        </div>
+
+        <div class="slots-section" id="slotsSection" aria-live="polite">
+          <div class="slots-empty">
+            <span>📆</span>
+            <span>Seleccioná un día para ver los horarios</span>
+          </div>
+        </div>
+
+        <div class="step-nav">
+          <button class="btn btn--ghost" id="step2Back">← Volver</button>
+          <button class="btn btn--primary" id="step2Next" disabled>Continuar →</button>
+        </div>
+      </section>
+
+      <!-- ── STEP 3: Datos de contacto ── -->
+      <section class="step-panel hidden" id="step3" aria-label="Paso 3: Tus datos">
+        <h2>Tus datos 👤</h2>
+
+        <!-- Booking Summary -->
+        <div class="booking-summary" id="bookingSummary" aria-label="Resumen de tu reserva">
+          <div class="booking-summary__row">
+            <span class="booking-summary__label">Servicio</span>
+            <span class="booking-summary__value" id="sumService">—</span>
+          </div>
+          <div class="booking-summary__row">
+            <span class="booking-summary__label">Fecha</span>
+            <span class="booking-summary__value" id="sumDate">—</span>
+          </div>
+          <div class="booking-summary__row">
+            <span class="booking-summary__label">Hora</span>
+            <span class="booking-summary__value" id="sumTime">—</span>
+          </div>
+        </div>
+
+        <form id="contactForm" novalidate>
+          <div class="form-group">
+            <label for="clientName">Nombre completo</label>
+            <input type="text" id="clientName" name="name"
+              placeholder="Ej: Juan Pérez" required
+              autocomplete="name" inputmode="text">
+          </div>
+          <div class="form-group">
+            <label for="clientPhone">Teléfono / WhatsApp</label>
+            <input type="tel" id="clientPhone" name="phone"
+              placeholder="+56 9 0000 0000" required
+              autocomplete="tel" inputmode="tel">
+          </div>
+          <div class="form-group">
+            <label for="clientNotes">Indicaciones (opcional)</label>
+            <textarea id="clientNotes" name="notes"
+              placeholder="Ej: quiero dejar el costado corto…" rows="2"></textarea>
+          </div>
+        </form>
+
+        <div class="step-nav">
+          <button class="btn btn--ghost" id="step3Back">← Volver</button>
+          <button class="btn btn--primary" id="step3Submit">
+            <span id="submitLabel">✓ Confirmar turno</span>
+            <span id="submitSpinner" class="spinner hidden"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ── CONFIRMATION ── -->
+      <section class="step-panel hidden confirm-screen" id="stepConfirm" aria-label="Reserva confirmada">
+        <div class="confirm-icon" aria-hidden="true">✓</div>
+        <h2>¡Turno reservado! 🎉</h2>
+        <p>Tu turno fue agendado correctamente. Anotá el código por si necesitás consultarlo.</p>
+
+        <div class="confirm-code">
+          <div class="confirm-code__label">Código de reserva</div>
+          <div class="confirm-code__value" id="confirmCode">—</div>
+        </div>
+
+        <div class="confirm-details" id="confirmDetails" aria-label="Detalles de tu turno"></div>
+
+        <p class="confirm-note">
+          Para cancelar o modificar tu turno, contacta directamente al barbero.
+        </p>
+        <button class="btn btn--primary btn--full" id="confirmClose">Listo 👍</button>
+      </section>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- Supabase CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
