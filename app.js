@@ -498,6 +498,7 @@ function renderServices() {
       </div>
       <div class="service-card__meta">
         <span class="service-card__duration">${svc.duration} min</span>
+        ${svc.price ? `<span class="service-card__price">${svc.price}</span>` : ''}
         <span class="service-card__check" aria-hidden="true">✓</span>
       </div>
     `;

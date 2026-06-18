@@ -62,12 +62,38 @@ const CONFIG = {
       duration: 45,
       price: null,   // null = no mostrar precio
       icon: '✂️'
+    },
+    {
+      id: 'corte_eminencia',
+      name: 'CORTE DE EMINENCIA 👑',
+      description: 'El Servicio incluye corte de cabello y perfilado de cejas',
+      duration: 20,
+      price: '$10.000',
+      icon: '👑'
+    },
+    {
+      id: 'barba',
+      name: 'BARBA',
+      description: 'El servicio incluye corte de largo de la barba, perfilado y degradado de la barba',
+      duration: 25,
+      price: '$9.000',
+      icon: '🪒'
+    },
+    {
+      id: 'corte_barba',
+      name: 'Corte + Barba',
+      description: 'El Servicio incluye arreglo de Barba, perfilado y Corte de cabello',
+      duration: 30,
+      price: '$15.000',
+      icon: '💈'
+    },
+    {
+      id: 'promo',
+      name: 'Promo 2 X 15.000 ‼️',
+      description: 'Promoción (MARTES-MIÉRCOLES-JUEVES). Agendar 2 veces para promoción',
+      duration: 15,
+      price: '$15.000',
+      icon: '🔥'
     }
-    // Agrega más servicios aquí si lo necesitás:
-    // {
-    //   id: 'barba', name: 'Arreglo de barba',
-    //   description: 'Perfilado y arreglo de barba',
-    //   duration: 30, price: 3000, icon: '🪒'
-    // }
   ]
 };
