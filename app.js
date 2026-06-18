@@ -303,38 +303,49 @@ function isSlotBlocked(timeStr, blockedSlots) {
 }
 
 function renderSlots(dateObj) {
-  const slots = generateSlots(dateObj);
+  const allSlots = generateSlots(dateObj);
   const section = $('slotsSection');
 
-  if (slots.length === 0) {
+  if (allSlots.length === 0) {
     section.innerHTML = `<div class="slots-empty"><span>🚫</span><span>No hay turnos disponibles este día.</span></div>`;
     return;
   }
 
-  const available = slots.filter(s =>
-    !state.bookedSlots.includes(s) && !isSlotBlocked(s, state.blockedSlots)
-  );
+  const now = new Date();
+  const isToday = toLocalDateStr(dateObj) === toLocalDateStr(now);
+  const currentMin = now.getHours() * 60 + now.getMinutes();
+
+  const toMin = t => {
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+
+  const availableSlots = allSlots.filter(slot => {
+    const isTaken = state.bookedSlots.includes(slot) || isSlotBlocked(slot, state.blockedSlots);
+    if (isTaken) return false;
+
+    if (isToday) {
+      if (toMin(slot) <= currentMin) return false;
+    }
+    return true;
+  });
 
   section.innerHTML = `
     <h4>Horarios disponibles — ${formatDateLong(dateObj)}</h4>
     <div class="slots-grid" id="slotsGrid" role="listbox" aria-label="Horarios disponibles"></div>
-    ${available.length === 0 ? '<p class="slots-empty"><span>😔</span><span>No quedan turnos para este día.</span></p>' : ''}
+    ${availableSlots.length === 0 ? '<p class="slots-empty"><span>😔</span><span>No quedan turnos para este día.</span></p>' : ''}
   `;
 
   const grid = $('slotsGrid');
-  slots.forEach(slot => {
-    const isTaken = state.bookedSlots.includes(slot) || isSlotBlocked(slot, state.blockedSlots);
+  availableSlots.forEach(slot => {
     const btn = document.createElement('button');
-    btn.className = 'slot-btn' + (isTaken ? ' taken' : '');
+    btn.className = 'slot-btn';
     btn.textContent = slot;
-    btn.disabled = isTaken;
     btn.setAttribute('role', 'option');
     btn.setAttribute('aria-selected', 'false');
-    btn.setAttribute('aria-label', `Horario ${slot}${isTaken ? ' — ocupado' : ''}`);
+    btn.setAttribute('aria-label', `Horario ${slot}`);
 
-    if (!isTaken) {
-      btn.addEventListener('click', () => selectSlot(slot, btn));
-    }
+    btn.addEventListener('click', () => selectSlot(slot, btn));
     grid.appendChild(btn);
   });
 }
@@ -518,10 +529,27 @@ async function updateHeroHint() {
     return;
   }
   try {
-    const booked = await DB.getAppointmentsForDate(toLocalDateStr(today));
+    const dateStr = toLocalDateStr(today);
+    const [booked, blocked] = await Promise.all([
+      DB.getAppointmentsForDate(dateStr),
+      DB.getBlockedForDate(dateStr)
+    ]);
     const slots  = generateSlots(today);
     const taken  = booked.map(a => a.appointment_time?.slice(0,5));
-    const avail  = slots.filter(s => !taken.includes(s));
+    
+    const currentMin = today.getHours() * 60 + today.getMinutes();
+    const toMin = t => {
+      const [h, m] = t.split(':').map(Number);
+      return h * 60 + m;
+    };
+
+    const avail = slots.filter(s => {
+      if (taken.includes(s)) return false;
+      if (isSlotBlocked(s, blocked)) return false;
+      if (toMin(s) <= currentMin) return false;
+      return true;
+    });
+
     $('heroHint').textContent = avail.length > 0
       ? `${avail.length} turno${avail.length !== 1 ? 's' : ''} disponible${avail.length !== 1 ? 's' : ''} hoy`
       : 'Sin turnos disponibles hoy — reservá para mañana';
