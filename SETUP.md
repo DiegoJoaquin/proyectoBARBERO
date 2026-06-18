@@ -7,10 +7,10 @@ se guarden en la nube y el barbero los vea en tiempo real desde cualquier dispos
 
 ## Paso 1 — Crear tu proyecto en Supabase (gratis)
 
-1. Entrá a **https://supabase.com** y creá una cuenta gratuita (podés usar tu Gmail)
-2. Hacé click en **"New project"**
-3. Elegí un nombre (ej: `cortes-zahir`) y una contraseña segura para la base de datos
-4. Seleccioná la región más cercana (ej: South America)
+1. Entra a **https://supabase.com** y creá una cuenta gratuita (puedes usar tu Gmail)
+2. Haz click en **"New project"**
+3. Elige un nombre (ej: `cortes-zahir`) y una contraseña segura para la base de datos
+4. Selecciona la región más cercana (ej: South America)
 5. Esperá ~2 minutos a que se cree el proyecto
 
 ---
@@ -18,8 +18,8 @@ se guarden en la nube y el barbero los vea en tiempo real desde cualquier dispos
 ## Paso 2 — Crear las tablas de la base de datos
 
 1. En tu proyecto de Supabase, andá a **SQL Editor** (menú izquierdo)
-2. Hacé click en **"New query"**
-3. Copiá y pegá este código SQL y hacé click en **"Run"**:
+2. Haz click en **"New query"**
+3. Copia y pegá este código SQL y haz click en **"Run"**:
 
 ```sql
 -- Tabla de turnos
@@ -78,7 +78,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE appointments;
 ## Paso 3 — Obtener las credenciales
 
 1. En Supabase, andá a **Settings → API** (menú izquierdo)
-2. Copiá los siguientes valores:
+2. Copia los siguientes valores:
    - **Project URL** → algo como `https://abcxyz.supabase.co`
    - **anon public** (bajo "Project API keys")
 
@@ -133,14 +133,14 @@ adminPin: '1234',  // ← cambialo a algo solo vos sabés
 ## ⚠️ Nota importante sobre Supabase gratis
 
 El plan gratuito de Supabase **pausa el proyecto si no hay actividad por 7 días**.
-Para evitarlo, podés:
+Para evitarlo, puedes:
 - Acceder al admin al menos 1 vez por semana
-- Configurar un "ping" automático (te explicamos si lo necesitás)
+- Configurar un "ping" automático (te explicamos si lo necesitas)
 - Cuando el negocio crezca, upgradeás al plan Pro (~$25/mes) que nunca pausa
 
 ---
 
 ## ❓ ¿Necesitás ayuda?
 
-Si tenés dudas con algún paso, no dudes en preguntar. Todo esto está
+Si tienes dudas con algún paso, no dudes en preguntar. Todo esto está
 diseñado para ser lo más simple posible sin costo mensual. 💈

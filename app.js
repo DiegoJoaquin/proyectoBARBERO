@@ -406,8 +406,8 @@ async function submitBooking() {
   const phone = $('clientPhone').value.trim();
   const notes = $('clientNotes').value.trim();
 
-  if (!name)  { showToast('Por favor ingresá tu nombre.', 'error'); $('clientName').focus(); return; }
-  if (!phone) { showToast('Por favor ingresá tu teléfono.', 'error'); $('clientPhone').focus(); return; }
+  if (!name)  { showToast('Por favor ingresa tu nombre.', 'error'); $('clientName').focus(); return; }
+  if (!phone) { showToast('Por favor ingresa tu teléfono.', 'error'); $('clientPhone').focus(); return; }
 
   const submitBtn = $('step3Submit');
   const label     = $('submitLabel');
@@ -451,7 +451,7 @@ async function submitBooking() {
     setStep(4);
   } catch (err) {
     console.error(err);
-    showToast('Hubo un error al reservar. Intentá de nuevo.', 'error');
+    showToast('Hubo un error al reservar. Intenta de nuevo.', 'error');
   } finally {
     submitBtn.disabled = false;
     label.classList.remove('hidden');
@@ -552,7 +552,7 @@ async function updateHeroHint() {
 
     $('heroHint').textContent = avail.length > 0
       ? `${avail.length} turno${avail.length !== 1 ? 's' : ''} disponible${avail.length !== 1 ? 's' : ''} hoy`
-      : 'Sin turnos disponibles hoy — reservá para mañana';
+      : 'Sin turnos disponibles hoy — reserva para mañana';
   } catch {
     $('heroHint').textContent = 'Ver turnos disponibles →';
   }

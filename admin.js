@@ -481,7 +481,7 @@ function renderTimeline(dateStr, appts, blocked) {
     empty.innerHTML = `
       <div class="empty-state__icon">😌</div>
       <div class="empty-state__title">Día libre de reservas</div>
-      <div class="empty-state__desc">No hay turnos agendados. Podés agregar uno con el botón +</div>
+      <div class="empty-state__desc">No hay turnos agendados. Puedes agregar uno con el botón +</div>
     `;
     timeline.appendChild(empty);
   }
@@ -503,7 +503,7 @@ async function changeStatus(id, status) {
     await loadDay(currentDateStr);
     const labels = { confirmed: 'Turno confirmado', completed: 'Turno marcado como hecho' };
     showToast(labels[status] || 'Estado actualizado', 'success');
-  } catch { showToast('Error al actualizar. Intentá de nuevo.', 'error'); }
+  } catch { showToast('Error al actualizar. Intenta de nuevo.', 'error'); }
 }
 
 async function cancelAppt(id) {
@@ -663,9 +663,9 @@ $('addModalConfirm').addEventListener('click', async () => {
   const time  = $('addTime').value;
   const notes = $('addNotes').value.trim();
 
-  if (!name)  { showToast('Ingresá el nombre del cliente.', 'error'); return; }
-  if (!phone) { showToast('Ingresá el teléfono.', 'error'); return; }
-  if (!date || !time) { showToast('Seleccioná fecha y horario.', 'error'); return; }
+  if (!name)  { showToast('Ingresa el nombre del cliente.', 'error'); return; }
+  if (!phone) { showToast('Ingresa el teléfono.', 'error'); return; }
+  if (!date || !time) { showToast('Selecciona fecha y horario.', 'error'); return; }
 
   $('addBtnLabel').classList.add('hidden');
   $('addBtnSpinner').classList.remove('hidden');
@@ -687,7 +687,7 @@ $('addModalConfirm').addEventListener('click', async () => {
     showToast('Turno agregado correctamente', 'success');
   } catch (err) {
     console.error(err);
-    showToast('Error al guardar. Intentá de nuevo.', 'error');
+    showToast('Error al guardar. Intenta de nuevo.', 'error');
   } finally {
     $('addBtnLabel').classList.remove('hidden');
     $('addBtnSpinner').classList.add('hidden');
@@ -745,7 +745,7 @@ $('blockModalConfirm').addEventListener('click', async () => {
   const end    = $('blockEnd').value;
   const reason = $('blockReason').value.trim();
 
-  if (!date || !start || !end) { showToast('Completá todos los campos.', 'error'); return; }
+  if (!date || !start || !end) { showToast('Completa todos los campos.', 'error'); return; }
   if (start >= end) { showToast('La hora de fin debe ser mayor a la de inicio.', 'error'); return; }
 
   $('blockBtnLabel').classList.add('hidden');
@@ -765,7 +765,7 @@ $('blockModalConfirm').addEventListener('click', async () => {
     showToast('Horario bloqueado', 'success');
   } catch (err) {
     console.error(err);
-    showToast('Error al bloquear. Intentá de nuevo.', 'error');
+    showToast('Error al bloquear. Intenta de nuevo.', 'error');
   } finally {
     $('blockBtnLabel').classList.remove('hidden');
     $('blockBtnSpinner').classList.add('hidden');
