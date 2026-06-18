@@ -56,14 +56,6 @@ const CONFIG = {
   // ============================================================
   services: [
     {
-      id: 'corte',
-      name: 'Corte de pelo',
-      description: 'Corte clásico o moderno a tu elección',
-      duration: 45,
-      price: null,   // null = no mostrar precio
-      icon: '✂️'
-    },
-    {
       id: 'corte_eminencia',
       name: 'CORTE DE EMINENCIA 👑',
       description: 'El Servicio incluye corte de cabello y perfilado de cejas',
