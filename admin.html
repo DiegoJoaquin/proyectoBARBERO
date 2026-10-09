@@ -10,6 +10,9 @@
   <link rel="apple-touch-icon" href="icon-192.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Agenda Zahir">
+  <meta name="format-detection" content="telephone=no">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="admin-page">
@@ -47,68 +50,64 @@
   <!-- ══ DASHBOARD ══════════════════════════════════════════ -->
   <div id="dashboard" class="dashboard hidden" role="main">
 
-    <!-- Header -->
-    <header class="dash-header">
-      <div class="dash-header__brand">
-        <span class="dash-header__icon" aria-hidden="true">💈</span>
-        <span>Cortes Zahir</span>
+    <!-- Barra superior fija -->
+    <header class="dash-top" id="dashTop">
+      <div class="dash-header">
+        <div class="dash-header__brand">
+          <span class="dash-header__icon" aria-hidden="true">💈</span>
+          <span>Agenda</span>
+        </div>
+        <div class="dash-header__actions">
+          <button class="icon-btn" id="refreshBtn" aria-label="Actualizar">↻</button>
+          <button class="icon-btn icon-btn--text" id="logoutBtn" aria-label="Cerrar sesión">Salir</button>
+        </div>
       </div>
-      <div class="dash-header__actions">
-        <button class="btn btn--ghost btn--sm" id="logoutBtn" aria-label="Cerrar sesión">Salir</button>
-      </div>
+
+      <!-- Fecha -->
+      <nav class="date-nav" aria-label="Navegación de fecha">
+        <button class="date-nav__btn" id="prevDay" aria-label="Día anterior">‹</button>
+        <label class="date-nav__center" id="navCenter">
+          <span class="date-nav__date" id="navDate">—</span>
+          <span class="date-nav__label" id="navLabel">Hoy</span>
+          <input type="date" id="navDatePicker" class="date-nav__picker" aria-label="Elegir fecha">
+        </label>
+        <button class="date-nav__btn" id="nextDay" aria-label="Día siguiente">›</button>
+      </nav>
+
+      <!-- Semana -->
+      <div class="week-strip" id="weekStrip" role="group" aria-label="Días de la semana"></div>
     </header>
 
-    <!-- Demo Banner (shown when no Supabase) -->
-    <div id="adminDemoBanner" class="demo-banner hidden">
+    <!-- Demo Banner (sin Supabase) -->
+    <div id="adminDemoBanner" class="demo-banner demo-banner--static hidden">
       ⚠️ Modo Demo — datos guardados solo en este dispositivo.
     </div>
 
-    <!-- Stats -->
-    <section class="stats-bar" aria-label="Estadísticas del día">
-      <div class="stat">
-        <span class="stat__value stat__value--gold" id="statTotal">0</span>
-        <span class="stat__label">Total</span>
-      </div>
-      <div class="stat">
-        <span class="stat__value stat__value--yellow" id="statPending">0</span>
-        <span class="stat__label">Pendientes</span>
-      </div>
-      <div class="stat">
-        <span class="stat__value stat__value--green" id="statCompleted">0</span>
-        <span class="stat__label">Hechos</span>
-      </div>
+    <!-- Resumen del día -->
+    <section class="day-summary" aria-label="Resumen del día">
+      <span class="chip"><b id="statTotal">0</b> turnos</span>
+      <span class="chip chip--yellow"><b id="statPending">0</b> pendientes</span>
+      <span class="chip chip--green"><b id="statCompleted">0</b> hechos</span>
+      <button class="chip chip--gold invisible" id="goToday">Ir a hoy</button>
     </section>
 
-    <!-- Date Navigation -->
-    <nav class="date-nav" aria-label="Navegación de fecha">
-      <button class="date-nav__btn" id="prevDay" aria-label="Día anterior">‹</button>
-      <button class="date-nav__center" id="navCenter" aria-label="Elegir fecha">
-        <div class="date-nav__label" id="navLabel">Hoy</div>
-        <div class="date-nav__date" id="navDate">—</div>
-        <input type="date" id="navDatePicker" class="date-nav__picker" tabindex="-1" aria-hidden="true">
-      </button>
-      <button class="date-nav__btn" id="nextDay" aria-label="Día siguiente">›</button>
-    </nav>
-    <div class="date-nav__today">
-      <button class="date-nav__today-btn" id="goToday">Ir a hoy</button>
-    </div>
-
-    <!-- Section Label -->
-    <div class="section-label">Agenda del día</div>
-
-    <!-- Timeline -->
+    <!-- Agenda -->
     <section class="timeline" id="timeline" aria-label="Turnos del día" aria-live="polite">
       <div class="empty-state">
-        <div class="empty-state__icon">📅</div>
+        <div class="spinner"></div>
         <div class="empty-state__title">Cargando agenda…</div>
       </div>
     </section>
 
-    <!-- FAB: Add appointment -->
-    <div class="fab-group">
-      <button class="fab fab--secondary" id="blockSlotBtn" title="Bloquear horario" aria-label="Bloquear horario">🔒</button>
-      <button class="fab" id="addApptBtn" title="Agregar turno" aria-label="Agregar turno manualmente">+</button>
-    </div>
+    <!-- Barra de acciones inferior -->
+    <nav class="bottom-bar" aria-label="Acciones">
+      <button class="bottom-bar__btn" id="blockSlotBtn">
+        <span aria-hidden="true">🔒</span> Bloquear
+      </button>
+      <button class="bottom-bar__btn bottom-bar__btn--primary" id="addApptBtn">
+        <span aria-hidden="true">＋</span> Agregar turno
+      </button>
+    </nav>
 
   </div>
 
@@ -206,7 +205,7 @@
         <span>📋</span>Detalle del turno
       </div>
       <div id="detailBody"></div>
-      <div class="admin-modal__actions" id="detailActions"></div>
+      <div class="sheet-actions" id="detailActions"></div>
     </div>
   </div>
 

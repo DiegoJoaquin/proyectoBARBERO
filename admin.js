@@ -55,6 +55,21 @@ const DB = {
     return check(await sb.from('appointments').select('*').eq('id', id).maybeSingle());
   },
 
+  /** { 'YYYY-MM-DD': cantidad de turnos activos } entre dos fechas */
+  async getCountsForRange(fromStr, toStr) {
+    const rows = IS_DEMO
+      ? DemoStore.appointments.filter(a =>
+          a.appointment_date >= fromStr && a.appointment_date <= toStr && a.status !== 'cancelled')
+      : check(await sb.from('appointments')
+          .select('appointment_date')
+          .gte('appointment_date', fromStr)
+          .lte('appointment_date', toStr)
+          .neq('status', 'cancelled')) || [];
+    const counts = {};
+    rows.forEach(r => { counts[r.appointment_date] = (counts[r.appointment_date] || 0) + 1; });
+    return counts;
+  },
+
   async getBlockedForDate(dateStr) {
     if (IS_DEMO) return DemoStore.blocked.filter(b => b.slot_date === dateStr);
     return check(await sb.from('blocked_slots').select('*').eq('slot_date', dateStr)) || [];
@@ -255,12 +270,17 @@ function hideDashboard() {
 /** Recarga el día actual sin mostrar "cargando" (para cambios en tiempo real) */
 function scheduleRefresh() {
   clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(() => loadDay(currentDateStr, { silent: true }), 300);
+  refreshTimer = setTimeout(() => {
+    weekLoadedFor = null; // fuerza recargar los contadores de la semana
+    loadDay(currentDateStr, { silent: true });
+  }, 300);
 }
 
 async function loadDay(dateStr, { silent = false } = {}) {
+  const changedDay = dateStr !== currentDateStr;
   currentDateStr = dateStr;
   updateDateNav(dateStr);
+  loadWeekStrip(dateStr);
   const token = ++loadToken;
 
   if (!silent) {
@@ -279,6 +299,7 @@ async function loadDay(dateStr, { silent = false } = {}) {
     if (token !== loadToken) return; // el usuario ya cambió de día
     renderTimeline(dateStr, appts, blocked);
     updateStats(appts);
+    if (!silent) scrollToNow(changedDay);
   } catch (err) {
     console.error(err);
     if (token !== loadToken) return;
@@ -298,11 +319,25 @@ async function loadDay(dateStr, { silent = false } = {}) {
   }
 }
 
+/** En el día de hoy, lleva la vista a la hora actual */
+function scrollToNow(changedDay) {
+  const marker = document.querySelector('.now-line');
+  if (marker && marker.previousElementSibling) {
+    const top = marker.getBoundingClientRect().top + window.scrollY - $('dashTop').offsetHeight - 8;
+    window.scrollTo({ top, behavior: 'smooth' });
+  } else if (changedDay) {
+    window.scrollTo({ top: 0 });
+  }
+}
+
 function updateDateNav(dateStr) {
-  $('navLabel').textContent = getNavLabel(dateStr) || ' ';
-  $('navDate').textContent = parseDateStr(dateStr).toLocaleDateString('es-CL', {
-    weekday: 'long', day: 'numeric', month: 'long'
-  });
+  const date = parseDateStr(dateStr);
+  const label = getNavLabel(dateStr);
+  $('navDate').textContent = date
+    .toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'short' })
+    .replace('.', '');
+  $('navLabel').textContent = label || date.getFullYear();
+  $('navLabel').classList.toggle('date-nav__label--today', label === 'Hoy');
   $('navDatePicker').value = dateStr;
   $('goToday').classList.toggle('invisible', dateStr === todayStr());
 }
@@ -313,40 +348,98 @@ function updateStats(appts) {
   $('statCompleted').textContent = appts.filter(a => a.status === 'completed').length;
 }
 
+// ── WEEK STRIP ────────────────────────────────────────────────
+const WEEK_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+let weekCounts = {};      // { 'YYYY-MM-DD': n° de turnos activos }
+let weekLoadedFor = null; // lunes de la semana cargada
+
+function mondayOf(dateStr) {
+  return offsetDate(dateStr, -((parseDateStr(dateStr).getDay() + 6) % 7));
+}
+
+function renderWeekStrip() {
+  const monday = mondayOf(currentDateStr);
+  const today = todayStr();
+  $('weekStrip').innerHTML = WEEK_LABELS.map((label, i) => {
+    const ds = offsetDate(monday, i);
+    const working = CONFIG.workingDays.includes(parseDateStr(ds).getDay());
+    const n = weekCounts[ds] || 0;
+    const cls = ['week-day',
+      ds === currentDateStr ? 'is-selected' : '',
+      ds === today ? 'is-today' : '',
+      working ? '' : 'is-off'].join(' ');
+    return `
+      <button class="${cls}" data-date="${ds}" aria-label="${escHtml(formatDateDisplay(ds))}, ${n} turnos">
+        <span class="week-day__label">${label}</span>
+        <span class="week-day__num">${parseDateStr(ds).getDate()}</span>
+        <span class="week-day__count">${n > 0 ? n : ''}</span>
+      </button>`;
+  }).join('');
+}
+
+async function loadWeekStrip(dateStr) {
+  const monday = mondayOf(dateStr);
+  renderWeekStrip();
+  if (weekLoadedFor === monday) return;
+  weekLoadedFor = monday;
+  try {
+    const counts = await DB.getCountsForRange(monday, offsetDate(monday, 6));
+    if (weekLoadedFor !== monday) return;
+    weekCounts = counts;
+    renderWeekStrip();
+  } catch (err) {
+    console.error(err);
+    weekLoadedFor = null;
+  }
+}
+
+$('weekStrip').addEventListener('click', e => {
+  const btn = e.target.closest('[data-date]');
+  if (btn) loadDay(btn.dataset.date);
+});
+
 // ── TIMELINE ──────────────────────────────────────────────────
 function statusLabel(status) {
   const map = {
-    pending:   '<span class="badge badge--pending">⏳ Pendiente</span>',
-    confirmed: '<span class="badge badge--confirmed">✓ Confirmado</span>',
-    completed: '<span class="badge badge--completed">✅ Hecho</span>',
-    cancelled: '<span class="badge badge--cancelled">✕ Cancelado</span>'
+    pending:   '<span class="badge badge--pending">Pendiente</span>',
+    confirmed: '<span class="badge badge--confirmed">Confirmado</span>',
+    completed: '<span class="badge badge--completed">Hecho</span>',
+    cancelled: '<span class="badge badge--cancelled">Cancelado</span>'
   };
   return map[status] || map.pending;
 }
 
 function apptCardHTML(appt) {
   const id = escHtml(appt.id);
-  const active = appt.status !== 'completed' && appt.status !== 'cancelled';
+
+  // Turno ya realizado: fila compacta
+  if (appt.status === 'completed') {
+    return `
+      <button class="appt-mini" data-action="detail" data-id="${id}">
+        <span class="appt-mini__check">✓</span>
+        <span class="appt-mini__name">${escHtml(appt.client_name)}</span>
+        <span class="appt-mini__service">${escHtml(appt.service)}</span>
+      </button>`;
+  }
+
+  const hasPhone = isValidPhone(appt.client_phone);
+  const mainAction = appt.status === 'pending'
+    ? `<button class="act act--confirm" data-action="status" data-status="confirmed" data-id="${id}">✓ Confirmar</button>`
+    : `<button class="act act--done" data-action="status" data-status="completed" data-id="${id}">✓ Marcar hecho</button>`;
+
   return `
     <div class="appt-card appt-card--${escHtml(appt.status)}">
       <div class="appt-card__top">
-        <div>
-          <div class="appt-card__name">${escHtml(appt.client_name)}</div>
-          <div class="appt-card__service">${escHtml(appt.service)}</div>
-        </div>
+        <div class="appt-card__name">${escHtml(appt.client_name)}</div>
         ${statusLabel(appt.status)}
       </div>
-      <div class="appt-card__phone">
-        📞 ${isValidPhone(appt.client_phone)
-          ? `<a href="tel:${escHtml(appt.client_phone)}">${escHtml(appt.client_phone)}</a>`
-          : escHtml(appt.client_phone)}
-      </div>
+      <div class="appt-card__service">${escHtml(appt.service)}</div>
       ${appt.notes ? `<div class="appt-card__notes">📝 ${escHtml(appt.notes)}</div>` : ''}
       <div class="appt-card__actions">
-        ${appt.status === 'pending' ? `<button class="btn btn--success btn--sm" data-action="status" data-status="confirmed" data-id="${id}">✓ Confirmar</button>` : ''}
-        ${active ? `<button class="btn btn--ghost btn--sm" data-action="status" data-status="completed" data-id="${id}">✅ Hecho</button>` : ''}
-        <button class="btn btn--ghost btn--sm" data-action="detail" data-id="${id}">Ver más</button>
-        ${active ? `<button class="btn btn--danger btn--sm" data-action="cancel" data-id="${id}" aria-label="Cancelar turno">✕</button>` : ''}
+        ${mainAction}
+        ${hasPhone ? `<a class="act act--icon" href="tel:${escHtml(appt.client_phone)}" aria-label="Llamar">📞</a>` : ''}
+        ${hasPhone ? `<a class="act act--icon" href="https://wa.me/${waNumber(appt.client_phone)}" target="_blank" rel="noopener" aria-label="WhatsApp">💬</a>` : ''}
+        <button class="act act--icon" data-action="detail" data-id="${id}" aria-label="Más opciones">•••</button>
       </div>
     </div>`;
 }
@@ -374,71 +467,80 @@ function renderTimeline(dateStr, appts, blocked) {
   }
 
   const now = new Date();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const isToday = dateStr === todayStr();
   const isPastSlot = slot => dateStr < todayStr() ||
-    (dateStr === todayStr() && toMin(slot) + CONFIG.slotDuration <= now.getHours() * 60 + now.getMinutes());
+    (isToday && toMin(slot) + CONFIG.slotDuration <= nowMin);
 
-  const fullyBlocked = slots.every(s => findBlock(s, blocked));
-  let html = active.length === 0 && !fullyBlocked ? `
-    <div class="empty-state empty-state--compact">
-      <div class="empty-state__title">😌 Sin reservas este día</div>
-      <div class="empty-state__desc">Toca un horario libre o el botón + para agregar.</div>
-    </div>` : '';
-
+  let rows = '';
   let lastBlockId = null;
-  slots.forEach((slot, idx) => {
+  let nowPlaced = !isToday;
+
+  slots.forEach(slot => {
     const appt = apptMap[slot];
     const blk  = findBlock(slot, blocked);
 
     // Un bloqueo que abarca varios horarios se muestra una sola vez
     if (!appt && blk && blk.id === lastBlockId) return;
     lastBlockId = !appt && blk ? blk.id : null;
-    let dotClass = '';
-    let content;
 
+    // Las horas libres que ya pasaron no se muestran
+    if (!appt && !blk && isPastSlot(slot)) return;
+
+    // Línea "Ahora" antes del primer horario que todavía no termina
+    if (!nowPlaced && toMin(slot) + CONFIG.slotDuration > nowMin) {
+      nowPlaced = true;
+      rows += `<div class="now-line"><span>Ahora · ${toTimeStr(nowMin)}</span></div>`;
+    }
+
+    let content;
+    let rowClass = '';
     if (appt) {
-      dotClass = `timeline-slot--${appt.status}`;
+      rowClass = `slot-row--${appt.status}`;
       content = apptCardHTML(appt);
     } else if (blk) {
-      dotClass = 'timeline-slot--blocked';
+      rowClass = 'slot-row--blocked';
       content = `
         <div class="blocked-slot">
           <div class="blocked-slot__info">
-            🔒 <div>
-              <div>Bloqueado ${escHtml(blk.start_time.slice(0, 5))}–${escHtml(blk.end_time.slice(0, 5))}</div>
-              ${blk.reason ? `<div class="blocked-slot__reason">${escHtml(blk.reason)}</div>` : ''}
-            </div>
+            <span>🔒 Bloqueado hasta ${escHtml(blk.end_time.slice(0, 5))}</span>
+            ${blk.reason ? `<span class="blocked-slot__reason">${escHtml(blk.reason)}</span>` : ''}
           </div>
-          <button class="btn btn--danger btn--sm" data-action="unblock" data-id="${escHtml(blk.id)}">Quitar</button>
+          <button class="act act--small act--danger" data-action="unblock" data-id="${escHtml(blk.id)}">Quitar</button>
         </div>`;
-    } else if (isPastSlot(slot)) {
-      content = `<div class="free-slot free-slot--past">Libre</div>`;
     } else {
       content = `
         <button class="free-slot" data-action="quick-add" data-slot="${slot}">
-          <span>＋</span><span>Libre — toca para agregar</span>
+          <span class="free-slot__plus">＋</span><span>Libre</span>
         </button>`;
     }
 
-    html += `
-      <div class="timeline-slot">
-        <div class="timeline-slot__time">${slot}</div>
-        <div class="timeline-slot__line ${dotClass}">
-          <div class="timeline-slot__dot"></div>
-          ${idx < slots.length - 1 ? '<div class="timeline-slot__vline"></div>' : ''}
-        </div>
-        <div class="timeline-slot__content">${content}</div>
+    rows += `
+      <div class="slot-row ${rowClass}">
+        <div class="slot-row__time">${slot}</div>
+        <div class="slot-row__content">${content}</div>
       </div>`;
   });
+
+  if (isToday && !nowPlaced) {
+    rows += `<div class="now-line now-line--end"><span>Jornada terminada · ${toTimeStr(nowMin)}</span></div>`;
+  }
+
+  let html = '';
+  if (active.length === 0 && !slots.every(s => findBlock(s, blocked))) {
+    html += `<div class="empty-state empty-state--compact"><div class="empty-state__title">😌 Sin reservas este día</div></div>`;
+  }
+  html += rows;
 
   if (cancelled.length) {
     html += `
       <details class="cancelled-list">
         <summary>Cancelados (${cancelled.length})</summary>
         ${cancelled.map(a => `
-          <div class="cancelled-item">
-            <span>${escHtml(a.appointment_time.slice(0, 5))} · ${escHtml(a.client_name)}</span>
-            <button class="btn btn--ghost btn--sm" data-action="detail" data-id="${escHtml(a.id)}">Ver</button>
-          </div>`).join('')}
+          <button class="cancelled-item" data-action="detail" data-id="${escHtml(a.id)}">
+            <span>${escHtml(a.appointment_time.slice(0, 5))}</span>
+            <span>${escHtml(a.client_name)}</span>
+          </button>`).join('')}
       </details>`;
   }
 
@@ -526,14 +628,12 @@ async function openDetail(id) {
   if (!appt) return;
 
   const time = appt.appointment_time.slice(0, 5);
-  $('detailTitle').innerHTML = `<span>📋</span>${escHtml(appt.client_name)}`;
+  $('detailTitle').innerHTML = `${escHtml(appt.client_name)} ${statusLabel(appt.status)}`;
   $('detailBody').innerHTML = [
     detailRow('✂️', 'Servicio', escHtml(appt.service)),
-    detailRow('📅', 'Fecha', escHtml(formatDateDisplay(appt.appointment_date))),
-    detailRow('🕐', 'Hora', `${escHtml(time)} hrs`),
+    detailRow('📅', 'Fecha y hora', `${escHtml(formatDateDisplay(appt.appointment_date))} · ${escHtml(time)} hrs`),
     detailRow('📞', 'Teléfono', `<a href="tel:${escHtml(appt.client_phone)}">${escHtml(appt.client_phone)}</a>`),
     appt.notes ? detailRow('📝', 'Notas', escHtml(appt.notes)) : '',
-    detailRow('📌', 'Estado', statusLabel(appt.status)),
     detailRow('🕒', 'Reservado', escHtml(new Date(appt.created_at).toLocaleString('es-CL')))
   ].join('');
 
@@ -543,14 +643,21 @@ async function openDetail(id) {
     `el ${formatDateDisplay(appt.appointment_date)} a las ${time} hrs (${appt.service}). ¡Te espero! 💈`;
 
   const id_ = escHtml(appt.id);
+  const st = appt.status;
+  const item = (action, label, extra = '', cls = '') =>
+    `<button class="sheet-btn ${cls}" data-action="${action}" data-id="${id_}" ${extra}>${label}</button>`;
+
   $('detailActions').innerHTML = `
-    ${isValidPhone(appt.client_phone) ? `
-      <a href="https://wa.me/${phone}?text=${encodeURIComponent(reminder)}" target="_blank" rel="noopener"
-         class="btn btn--gold-outline">💬 Recordatorio</a>` : ''}
-    ${appt.status === 'cancelled'
-      ? `<button class="btn btn--ghost" data-action="status" data-status="pending" data-id="${id_}">↺ Restaurar</button>`
-      : ''}
-    <button class="btn btn--ghost" data-action="close">Cerrar</button>
+    <div class="sheet-group">
+      ${isValidPhone(appt.client_phone) ? `
+        <a class="sheet-btn" href="https://wa.me/${phone}?text=${encodeURIComponent(reminder)}" target="_blank" rel="noopener">💬 Enviar recordatorio por WhatsApp</a>` : ''}
+      ${st === 'pending'   ? item('status', '✓ Confirmar turno', 'data-status="confirmed"') : ''}
+      ${st === 'pending' || st === 'confirmed' ? item('status', '✓ Marcar como hecho', 'data-status="completed"') : ''}
+      ${st === 'completed' ? item('status', '↺ Desmarcar "hecho"', 'data-status="confirmed"') : ''}
+      ${st === 'cancelled' ? item('status', '↺ Restaurar turno', 'data-status="pending"') : ''}
+      ${st !== 'cancelled' && st !== 'completed' ? item('cancel', '✕ Cancelar turno', '', 'sheet-btn--danger') : ''}
+    </div>
+    <button class="sheet-btn sheet-btn--close" data-action="close">Cerrar</button>
   `;
 
   openModal('detailModal');
@@ -561,6 +668,7 @@ $('detailActions').addEventListener('click', e => {
   if (!btn) return;
   if (btn.dataset.action === 'close')  closeModal('detailModal');
   if (btn.dataset.action === 'status') changeStatus(btn.dataset.id, btn.dataset.status);
+  if (btn.dataset.action === 'cancel') cancelAppt(btn.dataset.id);
 });
 
 // ── MODAL HELPERS ─────────────────────────────────────────────
@@ -585,7 +693,7 @@ document.addEventListener('keydown', e => {
 // ── ADD APPOINTMENT MODAL ─────────────────────────────────────
 function renderServiceSelect() {
   $('addService').innerHTML = CONFIG.services
-    .map((s, i) => `<option value="${i}">${escHtml(s.name)} · ${s.duration} min${s.price ? ' · ' + escHtml(s.price) : ''}</option>`)
+    .map((s, i) => `<option value="${i}">${escHtml(s.name)} · ${s.duration} min</option>`)
     .join('');
 }
 
@@ -758,9 +866,29 @@ $('prevDay').addEventListener('click', () => loadDay(offsetDate(currentDateStr, 
 $('nextDay').addEventListener('click', () => loadDay(offsetDate(currentDateStr, +1)));
 $('goToday').addEventListener('click', () => loadDay(todayStr()));
 $('navDatePicker').addEventListener('change', e => { if (e.target.value) loadDay(e.target.value); });
-$('navCenter').addEventListener('click', () => {
-  try { $('navDatePicker').showPicker(); } catch { $('navDatePicker').focus(); }
+$('navDatePicker').addEventListener('click', e => {
+  try { e.target.showPicker(); } catch { /* iPhone abre su selector nativo solo */ }
 });
+$('refreshBtn').addEventListener('click', () => {
+  weekLoadedFor = null;
+  loadDay(currentDateStr);
+});
+
+// Deslizar el dedo a los lados cambia de día
+(() => {
+  let x0 = null, y0 = null;
+  const area = $('timeline');
+  area.addEventListener('touchstart', e => {
+    x0 = e.touches[0].clientX; y0 = e.touches[0].clientY;
+  }, { passive: true });
+  area.addEventListener('touchend', e => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0;
+    const dy = e.changedTouches[0].clientY - y0;
+    x0 = null;
+    if (Math.abs(dx) > 70 && Math.abs(dy) < 40) loadDay(offsetDate(currentDateStr, dx < 0 ? 1 : -1));
+  }, { passive: true });
+})();
 
 $('logoutBtn').addEventListener('click', async () => {
   if (!confirm('¿Cerrar sesión?')) return;

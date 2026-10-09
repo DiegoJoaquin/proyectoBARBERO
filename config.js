@@ -25,7 +25,8 @@ const CONFIG = {
     tagline: 'Estilo & Precisión',
     address: 'Av.Irarrázaval 3054, Local 105B-112B, Ñuñoa',          // Ej: 'Av. Siempre Viva 123, Santiago' (vacío = no se muestra)
     whatsapp: '+56945527756',         // Ej: '+56 9 1234 5678' (vacío = no se muestra el botón)
-    instagram: '@zahirfade_'
+    instagram: '@zahirfade_',
+    heroImage: ''         // Foto de portada propia, ej: 'portada.jpg' (vacío = fondo de diseño)
   },
 
   // ============================================================

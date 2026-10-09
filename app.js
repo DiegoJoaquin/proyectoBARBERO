@@ -503,6 +503,11 @@ function init() {
   if (IS_DEMO) $('demoBanner').classList.remove('hidden');
 
   renderHeroInfo();
+  if (CONFIG.business.heroImage) {
+    const bg = $('heroBg');
+    bg.style.backgroundImage = `url("${encodeURI(CONFIG.business.heroImage)}")`;
+    bg.classList.add('has-photo');
+  }
   renderServices();
   renderCalendar();
   initEvents();
