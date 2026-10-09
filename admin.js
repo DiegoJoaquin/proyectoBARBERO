@@ -1,318 +1,274 @@
 /* ============================================================
    admin.js — Lógica del Panel del Barbero · Cortes Zahir
+   Requiere: config.js, common.js
    ============================================================ */
 
 'use strict';
 
 // ── HELPERS ───────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
+const PIN_LENGTH = CONFIG.adminPinLength || 6;
+const DEMO_PIN   = '123456'.slice(0, PIN_LENGTH);
 
-function showToast(msg, type = 'info') {
-  const container = $('toastContainer');
-  const icons = { success: '✓', error: '✕', info: 'ℹ' };
-  const el = document.createElement('div');
-  el.className = `toast toast--${type}`;
-  el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
-}
+function todayStr() { return toLocalDateStr(new Date()); }
 
-function toLocalDateStr(dateObj) {
-  return dateObj.toISOString().split('T')[0];
+function offsetDate(dateStr, days) {
+  const dt = parseDateStr(dateStr);
+  dt.setDate(dt.getDate() + days);
+  return toLocalDateStr(dt);
 }
 
 function formatDateDisplay(dateStr) {
-  // dateStr = 'YYYY-MM-DD'
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const date = new Date(y, m - 1, d);
-  return date.toLocaleDateString('es-CL', {
+  return parseDateStr(dateStr).toLocaleDateString('es-CL', {
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
   });
 }
 
-function isToday(dateStr) {
-  return dateStr === toLocalDateStr(new Date());
-}
-
-function isTomorrow(dateStr) {
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  return dateStr === toLocalDateStr(tomorrow);
-}
-
-function isYesterday(dateStr) {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  return dateStr === toLocalDateStr(yesterday);
-}
-
 function getNavLabel(dateStr) {
-  if (isToday(dateStr))     return 'Hoy';
-  if (isTomorrow(dateStr))  return 'Mañana';
-  if (isYesterday(dateStr)) return 'Ayer';
+  if (dateStr === todayStr())                return 'Hoy';
+  if (dateStr === offsetDate(todayStr(), 1))  return 'Mañana';
+  if (dateStr === offsetDate(todayStr(), -1)) return 'Ayer';
   return '';
 }
 
-// ── DATABASE ABSTRACTION ──────────────────────────────────────
+/** Lanza el error de Supabase si lo hay (antes se ignoraban en silencio) */
+function check({ data, error }) {
+  if (error) throw error;
+  return data;
+}
+
+// ── DATABASE ──────────────────────────────────────────────────
 const DB = {
-  _client: null,
-  isDemo: false,
-
-  _apptKey:    'cz_appointments',
-  _blockedKey: 'cz_blocked',
-
-  get _local()  { return JSON.parse(localStorage.getItem(this._apptKey)    || '[]'); },
-  set _local(v) { localStorage.setItem(this._apptKey, JSON.stringify(v)); },
-  get _blocked(){ return JSON.parse(localStorage.getItem(this._blockedKey) || '[]'); },
-  set _blocked(v){ localStorage.setItem(this._blockedKey, JSON.stringify(v)); },
-
-  init() {
-    if (CONFIG.supabase.url.startsWith('TU_')) {
-      this.isDemo = true;
-      return;
-    }
-    this._client = window.supabase.createClient(
-      CONFIG.supabase.url,
-      CONFIG.supabase.anonKey
-    );
-  },
-
   async getAppointmentsForDate(dateStr) {
-    if (this.isDemo) {
-      return this._local
+    if (IS_DEMO) {
+      return DemoStore.appointments
         .filter(a => a.appointment_date === dateStr)
         .sort((a, b) => a.appointment_time.localeCompare(b.appointment_time));
     }
-    const { data } = await this._client
-      .from('appointments')
+    return check(await sb.from('appointments')
       .select('*')
       .eq('appointment_date', dateStr)
-      .order('appointment_time');
-    return data || [];
+      .order('appointment_time')) || [];
+  },
+
+  async getAppointment(id) {
+    if (IS_DEMO) return DemoStore.appointments.find(a => a.id === id) || null;
+    return check(await sb.from('appointments').select('*').eq('id', id).maybeSingle());
   },
 
   async getBlockedForDate(dateStr) {
-    if (this.isDemo) {
-      return this._blocked.filter(b => b.slot_date === dateStr);
-    }
-    const { data } = await this._client
-      .from('blocked_slots')
-      .select('*')
-      .eq('slot_date', dateStr);
-    return data || [];
+    if (IS_DEMO) return DemoStore.blocked.filter(b => b.slot_date === dateStr);
+    return check(await sb.from('blocked_slots').select('*').eq('slot_date', dateStr)) || [];
   },
 
   async createAppointment(appt) {
-    if (this.isDemo) {
-      const newAppt = {
-        ...appt,
-        id: 'ADMIN-' + Math.random().toString(36).slice(2,8).toUpperCase(),
-        status: 'confirmed',
-        created_at: new Date().toISOString()
-      };
-      this._local = [...this._local, newAppt];
-      return newAppt;
+    if (IS_DEMO) {
+      const taken = DemoStore.appointments.some(a =>
+        a.appointment_date === appt.appointment_date &&
+        a.appointment_time === appt.appointment_time &&
+        a.status !== 'cancelled');
+      if (taken) throw { code: '23505' };
+      DemoStore.appointments = [...DemoStore.appointments, {
+        ...appt, id: crypto.randomUUID(), created_at: new Date().toISOString()
+      }];
+      return;
     }
-    const { data, error } = await this._client
-      .from('appointments').insert(appt).select().single();
-    if (error) throw error;
-    return data;
+    check(await sb.from('appointments').insert(appt));
   },
 
   async updateStatus(id, status) {
-    if (this.isDemo) {
-      const list = this._local;
-      const appt = list.find(a => a.id === id);
-      if (appt) { appt.status = status; this._local = list; }
+    if (IS_DEMO) {
+      DemoStore.appointments = DemoStore.appointments.map(a => a.id === id ? { ...a, status } : a);
       return;
     }
-    await this._client.from('appointments').update({ status }).eq('id', id);
-  },
-
-  async deleteAppointment(id) {
-    if (this.isDemo) {
-      this._local = this._local.filter(a => a.id !== id);
-      return;
-    }
-    await this._client.from('appointments').delete().eq('id', id);
+    check(await sb.from('appointments').update({ status }).eq('id', id));
   },
 
   async blockSlot(slot) {
-    if (this.isDemo) {
-      const newSlot = {
-        ...slot,
-        id: 'BLK-' + Math.random().toString(36).slice(2,8).toUpperCase()
-      };
-      this._blocked = [...this._blocked, newSlot];
-      return newSlot;
+    if (IS_DEMO) {
+      DemoStore.blocked = [...DemoStore.blocked, { ...slot, id: crypto.randomUUID() }];
+      return;
     }
-    const { data, error } = await this._client
-      .from('blocked_slots').insert(slot).select().single();
-    if (error) throw error;
-    return data;
+    check(await sb.from('blocked_slots').insert(slot));
   },
 
   async deleteBlockedSlot(id) {
-    if (this.isDemo) {
-      this._blocked = this._blocked.filter(b => b.id !== id);
+    if (IS_DEMO) {
+      DemoStore.blocked = DemoStore.blocked.filter(b => b.id !== id);
       return;
     }
-    await this._client.from('blocked_slots').delete().eq('id', id);
+    check(await sb.from('blocked_slots').delete().eq('id', id));
   },
 
-  /** Suscripción a cambios en tiempo real (solo con Supabase) */
-  subscribeToChanges(dateStr, callback) {
-    if (this.isDemo || !this._client) return;
-    return this._client
-      .channel('admin-appts')
-      .on('postgres_changes',
-        { event: '*', schema: 'public', table: 'appointments' },
-        payload => {
-          if (payload.new?.appointment_date === dateStr ||
-              payload.old?.appointment_date === dateStr) {
-            callback();
-          }
-        })
+  /** Avisa de cualquier cambio en turnos o bloqueos (tiempo real) */
+  subscribe(callback) {
+    if (IS_DEMO) return null;
+    return sb.channel('admin-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, callback)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_slots' }, callback)
       .subscribe();
   }
 };
 
-// ── TIME SLOT GENERATOR ───────────────────────────────────────
-function generateSlots(dateStr) {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dateObj = new Date(y, m - 1, d);
-  const dow = dateObj.getDay();
-
-  if (!CONFIG.workingDays.includes(dow)) return [];
-
-  const isSat = dow === 6;
-  const { start, end } = isSat
-    ? CONFIG.workingHours.saturday
-    : CONFIG.workingHours.weekdays;
-
-  const toMin = t => { const [h, mm] = t.split(':').map(Number); return h*60+mm; };
-  const toStr = mins => {
-    const h = Math.floor(mins/60).toString().padStart(2,'0');
-    const m = (mins%60).toString().padStart(2,'0');
-    return `${h}:${m}`;
-  };
-
-  const slots = [];
-  let cur = toMin(start);
-  const endMin = toMin(end);
-  while (cur + CONFIG.slotDuration <= endMin) {
-    slots.push(toStr(cur));
-    cur += CONFIG.slotDuration;
-  }
-  return slots;
-}
-
-// ── PIN AUTH ──────────────────────────────────────────────────
+// ── AUTH ──────────────────────────────────────────────────────
 const Auth = {
-  _pin: '',
-  _SESSION_KEY: 'cz_admin_auth',
-  _SESSION_TTL: 8 * 60 * 60 * 1000, // 8 hours
+  _DEMO_KEY: 'cz_admin_demo_auth',
 
-  isAuthenticated() {
-    const raw = sessionStorage.getItem(this._SESSION_KEY);
-    if (!raw) return false;
-    try {
-      const { ts } = JSON.parse(raw);
-      return Date.now() - ts < this._SESSION_TTL;
-    } catch { return false; }
+  async isAuthenticated() {
+    if (IS_DEMO) return sessionStorage.getItem(this._DEMO_KEY) === '1';
+    const { data } = await sb.auth.getSession();
+    return !!data.session;
   },
 
-  login() {
-    sessionStorage.setItem(this._SESSION_KEY, JSON.stringify({ ts: Date.now() }));
+  /** Devuelve true si el PIN es correcto */
+  async login(pin) {
+    if (IS_DEMO) {
+      if (pin !== DEMO_PIN) return false;
+      sessionStorage.setItem(this._DEMO_KEY, '1');
+      return true;
+    }
+    const { error } = await sb.auth.signInWithPassword({ email: CONFIG.adminEmail, password: pin });
+    if (!error) return true;
+    if (error.status === 400) return false;   // credenciales inválidas
+    throw error;                              // red caída, límite de intentos, etc.
   },
 
-  logout() {
-    sessionStorage.removeItem(this._SESSION_KEY);
+  async logout() {
+    if (IS_DEMO) { sessionStorage.removeItem(this._DEMO_KEY); return; }
+    await sb.auth.signOut();
   }
 };
 
+// ── PIN SCREEN ────────────────────────────────────────────────
 let pinEntry = '';
+let pinBusy = false;
+let failedAttempts = 0;
+let lockedUntil = 0;
 
-function updatePinDots() {
-  for (let i = 0; i < 4; i++) {
-    const dot = $(`pd${i}`);
-    dot.classList.toggle('filled', i < pinEntry.length);
+function renderPinDots() {
+  const display = $('pinDisplay');
+  display.innerHTML = '';
+  for (let i = 0; i < PIN_LENGTH; i++) {
+    const dot = document.createElement('span');
+    dot.className = 'pin-dot';
+    display.appendChild(dot);
   }
 }
 
-function flashError() {
-  for (let i = 0; i < 4; i++) {
-    const dot = $(`pd${i}`);
+function updatePinDots() {
+  document.querySelectorAll('.pin-dot').forEach((dot, i) => {
+    dot.classList.toggle('filled', i < pinEntry.length);
+  });
+}
+
+function showPinError(msg) {
+  document.querySelectorAll('.pin-dot').forEach(dot => {
     dot.classList.add('error');
     setTimeout(() => dot.classList.remove('error', 'filled'), 600);
-  }
+  });
+  $('pinError').textContent = msg;
   $('pinError').classList.remove('hidden');
-  setTimeout(() => $('pinError').classList.add('hidden'), 2000);
+  setTimeout(() => $('pinError').classList.add('hidden'), 2500);
   pinEntry = '';
 }
 
-function checkPin() {
-  if (pinEntry === CONFIG.adminPin) {
-    Auth.login();
-    showDashboard();
-  } else {
-    flashError();
+async function checkPin() {
+  if (Date.now() < lockedUntil) {
+    const secs = Math.ceil((lockedUntil - Date.now()) / 1000);
+    showPinError(`Demasiados intentos. Espera ${secs} s.`);
+    return;
+  }
+  pinBusy = true;
+  $('pinDisplay').classList.add('checking');
+  try {
+    if (await Auth.login(pinEntry)) {
+      failedAttempts = 0;
+      pinEntry = '';
+      updatePinDots();
+      showDashboard();
+    } else {
+      failedAttempts++;
+      if (failedAttempts >= 5) {
+        lockedUntil = Date.now() + 30_000;
+        failedAttempts = 0;
+        showPinError('Demasiados intentos. Espera 30 s.');
+      } else {
+        showPinError('PIN incorrecto. Intenta de nuevo.');
+      }
+    }
+  } catch (err) {
+    console.error(err);
+    showPinError(err.status === 429
+      ? 'Demasiados intentos. Espera unos minutos.'
+      : 'Sin conexión con el servidor. Intenta de nuevo.');
+  } finally {
+    pinBusy = false;
+    $('pinDisplay').classList.remove('checking');
   }
 }
 
+function pressPinKey(key) {
+  if (pinBusy) return;
+  if (key === 'del')        pinEntry = pinEntry.slice(0, -1);
+  else if (key === 'clear') pinEntry = '';
+  else if (pinEntry.length < PIN_LENGTH) pinEntry += key;
+
+  updatePinDots();
+  if (pinEntry.length === PIN_LENGTH) checkPin();
+}
+
 function initPinKeyboard() {
+  renderPinDots();
   document.querySelectorAll('.pin-key').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.dataset.key;
-      if (key === 'del')   { pinEntry = pinEntry.slice(0,-1); }
-      else if (key === 'clear') { pinEntry = ''; }
-      else if (pinEntry.length < 4) { pinEntry += key; }
-
-      updatePinDots();
-      if (pinEntry.length === 4) checkPin();
-    });
+    btn.addEventListener('click', () => pressPinKey(btn.dataset.key));
   });
-
-  // Physical keyboard support
   document.addEventListener('keydown', e => {
     if ($('loginScreen').classList.contains('hidden')) return;
-    if (e.key >= '0' && e.key <= '9' && pinEntry.length < 4) {
-      pinEntry += e.key;
-      updatePinDots();
-      if (pinEntry.length === 4) checkPin();
-    } else if (e.key === 'Backspace') {
-      pinEntry = pinEntry.slice(0,-1);
-      updatePinDots();
-    }
+    if (e.key >= '0' && e.key <= '9') pressPinKey(e.key);
+    else if (e.key === 'Backspace') pressPinKey('del');
   });
 }
 
-// ── DASHBOARD LOGIC ───────────────────────────────────────────
-let currentDateStr = toLocalDateStr(new Date());
-let realtimeSub = null;
+// ── DASHBOARD ─────────────────────────────────────────────────
+let currentDateStr = todayStr();
+let loadToken = 0;
+let realtimeChannel = null;
+let refreshTimer = null;
 
 function showDashboard() {
   $('loginScreen').classList.add('hidden');
   $('dashboard').classList.remove('hidden');
+  if (IS_DEMO) $('adminDemoBanner').classList.remove('hidden');
 
-  if (DB.isDemo) $('adminDemoBanner').classList.remove('hidden');
-
+  if (!realtimeChannel) realtimeChannel = DB.subscribe(scheduleRefresh);
   loadDay(currentDateStr);
 }
 
-async function loadDay(dateStr) {
+function hideDashboard() {
+  if (realtimeChannel) { sb.removeChannel(realtimeChannel); realtimeChannel = null; }
+  ['addModal', 'blockModal', 'detailModal'].forEach(closeModal);
+  $('dashboard').classList.add('hidden');
+  $('loginScreen').classList.remove('hidden');
+  pinEntry = '';
+  updatePinDots();
+}
+
+/** Recarga el día actual sin mostrar "cargando" (para cambios en tiempo real) */
+function scheduleRefresh() {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(() => loadDay(currentDateStr, { silent: true }), 300);
+}
+
+async function loadDay(dateStr, { silent = false } = {}) {
   currentDateStr = dateStr;
   updateDateNav(dateStr);
+  const token = ++loadToken;
 
-  $('timeline').innerHTML = `
-    <div class="empty-state">
-      <div class="empty-state__icon" style="font-size:1.5rem; animation: spin .8s linear infinite">⚙️</div>
-      <div class="empty-state__title">Cargando agenda…</div>
-    </div>`;
-
-  // Unsubscribe old
-  if (realtimeSub) {
-    try { realtimeSub.unsubscribe(); } catch {}
+  if (!silent) {
+    $('timeline').innerHTML = `
+      <div class="empty-state">
+        <div class="spinner"></div>
+        <div class="empty-state__title">Cargando agenda…</div>
+      </div>`;
   }
 
   try {
@@ -320,288 +276,292 @@ async function loadDay(dateStr) {
       DB.getAppointmentsForDate(dateStr),
       DB.getBlockedForDate(dateStr)
     ]);
-
+    if (token !== loadToken) return; // el usuario ya cambió de día
     renderTimeline(dateStr, appts, blocked);
     updateStats(appts);
-
-    // Real-time sub for today
-    if (isToday(dateStr)) {
-      realtimeSub = DB.subscribeToChanges(dateStr, () => loadDay(dateStr));
-    }
   } catch (err) {
     console.error(err);
+    if (token !== loadToken) return;
+    if (err?.code === 'PGRST301' || err?.status === 401) {   // sesión expirada
+      showToast('Tu sesión expiró. Ingresa el PIN de nuevo.', 'error');
+      hideDashboard();
+      return;
+    }
+    if (silent) return;
     $('timeline').innerHTML = `
       <div class="empty-state">
         <div class="empty-state__icon">⚠️</div>
         <div class="empty-state__title">Error al cargar</div>
-        <div class="empty-state__desc">Verificá tu conexión y recargá la página.</div>
+        <div class="empty-state__desc">Verifica tu conexión a internet.</div>
+        <button class="btn btn--ghost btn--sm" data-action="retry">Reintentar</button>
       </div>`;
   }
 }
 
 function updateDateNav(dateStr) {
-  const label = getNavLabel(dateStr);
-  $('navLabel').textContent = label || dateStr;
-
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const dateObj = new Date(y, m-1, d);
-  $('navDate').textContent = dateObj.toLocaleDateString('es-CL', {
+  $('navLabel').textContent = getNavLabel(dateStr) || ' ';
+  $('navDate').textContent = parseDateStr(dateStr).toLocaleDateString('es-CL', {
     weekday: 'long', day: 'numeric', month: 'long'
   });
+  $('navDatePicker').value = dateStr;
+  $('goToday').classList.toggle('invisible', dateStr === todayStr());
 }
 
 function updateStats(appts) {
-  const active = appts.filter(a => a.status !== 'cancelled');
-  $('statTotal').textContent     = active.length;
+  $('statTotal').textContent     = appts.filter(a => a.status !== 'cancelled').length;
   $('statPending').textContent   = appts.filter(a => a.status === 'pending').length;
   $('statCompleted').textContent = appts.filter(a => a.status === 'completed').length;
 }
 
-// ── TIMELINE RENDERER ─────────────────────────────────────────
-function isTimeBlocked(timeStr, blocked) {
-  const toMin = t => { const [h,m] = t.slice(0,5).split(':').map(Number); return h*60+m; };
-  const sMin = toMin(timeStr);
-  return blocked.find(b => {
-    const bS = toMin(b.start_time), bE = toMin(b.end_time);
-    return sMin >= bS && sMin < bE;
-  });
-}
-
+// ── TIMELINE ──────────────────────────────────────────────────
 function statusLabel(status) {
   const map = {
     pending:   '<span class="badge badge--pending">⏳ Pendiente</span>',
     confirmed: '<span class="badge badge--confirmed">✓ Confirmado</span>',
-    completed: '<span class="badge badge--completed">✅ Completado</span>',
+    completed: '<span class="badge badge--completed">✅ Hecho</span>',
     cancelled: '<span class="badge badge--cancelled">✕ Cancelado</span>'
   };
   return map[status] || map.pending;
 }
 
+function apptCardHTML(appt) {
+  const id = escHtml(appt.id);
+  const active = appt.status !== 'completed' && appt.status !== 'cancelled';
+  return `
+    <div class="appt-card appt-card--${escHtml(appt.status)}">
+      <div class="appt-card__top">
+        <div>
+          <div class="appt-card__name">${escHtml(appt.client_name)}</div>
+          <div class="appt-card__service">${escHtml(appt.service)}</div>
+        </div>
+        ${statusLabel(appt.status)}
+      </div>
+      <div class="appt-card__phone">
+        📞 ${isValidPhone(appt.client_phone)
+          ? `<a href="tel:${escHtml(appt.client_phone)}">${escHtml(appt.client_phone)}</a>`
+          : escHtml(appt.client_phone)}
+      </div>
+      ${appt.notes ? `<div class="appt-card__notes">📝 ${escHtml(appt.notes)}</div>` : ''}
+      <div class="appt-card__actions">
+        ${appt.status === 'pending' ? `<button class="btn btn--success btn--sm" data-action="status" data-status="confirmed" data-id="${id}">✓ Confirmar</button>` : ''}
+        ${active ? `<button class="btn btn--ghost btn--sm" data-action="status" data-status="completed" data-id="${id}">✅ Hecho</button>` : ''}
+        <button class="btn btn--ghost btn--sm" data-action="detail" data-id="${id}">Ver más</button>
+        ${active ? `<button class="btn btn--danger btn--sm" data-action="cancel" data-id="${id}" aria-label="Cancelar turno">✕</button>` : ''}
+      </div>
+    </div>`;
+}
+
 function renderTimeline(dateStr, appts, blocked) {
-  const slots = generateSlots(dateStr);
   const timeline = $('timeline');
+  const active = appts.filter(a => a.status !== 'cancelled');
+  const cancelled = appts.filter(a => a.status === 'cancelled');
+
+  // Mapa de turnos activos por hora (los cancelados NO tapan a uno nuevo en la misma hora)
+  const apptMap = {};
+  active.forEach(a => { apptMap[a.appointment_time.slice(0, 5)] = a; });
+
+  // Horarios del día + turnos fuera de la grilla (ej: si se cambió el horario en config.js)
+  const slots = [...new Set([...generateSlots(parseDateStr(dateStr)), ...Object.keys(apptMap)])].sort();
 
   if (slots.length === 0) {
-    const [y,m,d] = dateStr.split('-').map(Number);
-    const dow = new Date(y,m-1,d).getDay();
     timeline.innerHTML = `
       <div class="empty-state">
         <div class="empty-state__icon">🚫</div>
-        <div class="empty-state__title">${dow === 0 ? 'Domingo' : 'Día libre'}</div>
+        <div class="empty-state__title">${parseDateStr(dateStr).getDay() === 0 ? 'Domingo' : 'Día libre'}</div>
         <div class="empty-state__desc">No hay atención este día.</div>
       </div>`;
     return;
   }
 
-  const apptMap = {};
-  appts.forEach(a => {
-    const key = a.appointment_time.slice(0,5);
-    apptMap[key] = a;
-  });
+  const now = new Date();
+  const isPastSlot = slot => dateStr < todayStr() ||
+    (dateStr === todayStr() && toMin(slot) + CONFIG.slotDuration <= now.getHours() * 60 + now.getMinutes());
 
-  timeline.innerHTML = '';
-  let hasContent = false;
+  const fullyBlocked = slots.every(s => findBlock(s, blocked));
+  let html = active.length === 0 && !fullyBlocked ? `
+    <div class="empty-state empty-state--compact">
+      <div class="empty-state__title">😌 Sin reservas este día</div>
+      <div class="empty-state__desc">Toca un horario libre o el botón + para agregar.</div>
+    </div>` : '';
 
+  let lastBlockId = null;
   slots.forEach((slot, idx) => {
-    const appt    = apptMap[slot];
-    const blkData = isTimeBlocked(slot, blocked);
-    const isLast  = idx === slots.length - 1;
+    const appt = apptMap[slot];
+    const blk  = findBlock(slot, blocked);
 
-    const slotEl = document.createElement('div');
-    slotEl.className = 'timeline-slot';
+    // Un bloqueo que abarca varios horarios se muestra una sola vez
+    if (!appt && blk && blk.id === lastBlockId) return;
+    lastBlockId = !appt && blk ? blk.id : null;
+    let dotClass = '';
+    let content;
 
-    let dotClass  = '';
-    let contentHTML = '';
-
-    if (appt && appt.status !== 'cancelled') {
-      hasContent = true;
+    if (appt) {
       dotClass = `timeline-slot--${appt.status}`;
-
-      contentHTML = `
-        <div class="appt-card appt-card--${appt.status}" data-id="${appt.id}">
-          <div class="appt-card__top">
-            <div>
-              <div class="appt-card__name">${escHtml(appt.client_name)}</div>
-              <div class="appt-card__service">${escHtml(appt.service)}</div>
-            </div>
-            ${statusLabel(appt.status)}
-          </div>
-          <div class="appt-card__phone">
-            📞 <a href="tel:${escHtml(appt.client_phone)}" style="color:inherit">${escHtml(appt.client_phone)}</a>
-          </div>
-          <div class="appt-card__actions">
-            ${appt.status === 'pending' ? `
-              <button class="btn btn--success btn--sm" onclick="changeStatus('${appt.id}','confirmed')">✓ Confirmar</button>
-            ` : ''}
-            ${appt.status !== 'completed' && appt.status !== 'cancelled' ? `
-              <button class="btn btn--ghost btn--sm" onclick="changeStatus('${appt.id}','completed')">✅ Hecho</button>
-            ` : ''}
-            <button class="btn btn--ghost btn--sm" onclick="openDetail('${appt.id}')">Ver más</button>
-            ${appt.status !== 'cancelled' ? `
-              <button class="btn btn--danger btn--sm" onclick="cancelAppt('${appt.id}')">✕</button>
-            ` : ''}
-          </div>
-        </div>`;
-    } else if (blkData) {
-      hasContent = true;
+      content = apptCardHTML(appt);
+    } else if (blk) {
       dotClass = 'timeline-slot--blocked';
-      contentHTML = `
+      content = `
         <div class="blocked-slot">
           <div class="blocked-slot__info">
             🔒 <div>
-              <div>Bloqueado</div>
-              ${blkData.reason ? `<div class="blocked-slot__reason">${escHtml(blkData.reason)}</div>` : ''}
+              <div>Bloqueado ${escHtml(blk.start_time.slice(0, 5))}–${escHtml(blk.end_time.slice(0, 5))}</div>
+              ${blk.reason ? `<div class="blocked-slot__reason">${escHtml(blk.reason)}</div>` : ''}
             </div>
           </div>
-          <button class="btn btn--danger btn--sm" onclick="unblockSlot('${blkData.id}')">Quitar</button>
+          <button class="btn btn--danger btn--sm" data-action="unblock" data-id="${escHtml(blk.id)}">Quitar</button>
         </div>`;
+    } else if (isPastSlot(slot)) {
+      content = `<div class="free-slot free-slot--past">Libre</div>`;
     } else {
-      contentHTML = `
-        <div class="free-slot" onclick="quickAddAppt('${slot}')">
-          <span>＋</span>
-          <span>Libre — toca para agregar</span>
-        </div>`;
+      content = `
+        <button class="free-slot" data-action="quick-add" data-slot="${slot}">
+          <span>＋</span><span>Libre — toca para agregar</span>
+        </button>`;
     }
 
-    slotEl.innerHTML = `
-      <div class="timeline-slot__time">${slot}</div>
-      <div class="timeline-slot__line ${dotClass}">
-        <div class="timeline-slot__dot"></div>
-        ${!isLast ? '<div class="timeline-slot__vline"></div>' : ''}
-      </div>
-      <div class="timeline-slot__content">${contentHTML}</div>
-    `;
-
-    timeline.appendChild(slotEl);
+    html += `
+      <div class="timeline-slot">
+        <div class="timeline-slot__time">${slot}</div>
+        <div class="timeline-slot__line ${dotClass}">
+          <div class="timeline-slot__dot"></div>
+          ${idx < slots.length - 1 ? '<div class="timeline-slot__vline"></div>' : ''}
+        </div>
+        <div class="timeline-slot__content">${content}</div>
+      </div>`;
   });
 
-  if (!hasContent && appts.filter(a => a.status !== 'cancelled').length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.innerHTML = `
-      <div class="empty-state__icon">😌</div>
-      <div class="empty-state__title">Día libre de reservas</div>
-      <div class="empty-state__desc">No hay turnos agendados. Puedes agregar uno con el botón +</div>
-    `;
-    timeline.appendChild(empty);
+  if (cancelled.length) {
+    html += `
+      <details class="cancelled-list">
+        <summary>Cancelados (${cancelled.length})</summary>
+        ${cancelled.map(a => `
+          <div class="cancelled-item">
+            <span>${escHtml(a.appointment_time.slice(0, 5))} · ${escHtml(a.client_name)}</span>
+            <button class="btn btn--ghost btn--sm" data-action="detail" data-id="${escHtml(a.id)}">Ver</button>
+          </div>`).join('')}
+      </details>`;
   }
+
+  timeline.innerHTML = html;
 }
 
-function escHtml(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// Un solo listener para todos los botones de la agenda
+$('timeline').addEventListener('click', e => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const { action, id, status, slot } = btn.dataset;
+  if (action === 'status')    changeStatus(id, status);
+  if (action === 'cancel')    cancelAppt(id);
+  if (action === 'detail')    openDetail(id);
+  if (action === 'unblock')   unblockSlot(id);
+  if (action === 'quick-add') openAddModal(currentDateStr, slot);
+  if (action === 'retry')     loadDay(currentDateStr);
+});
 
 // ── APPOINTMENT ACTIONS ───────────────────────────────────────
 async function changeStatus(id, status) {
   try {
     await DB.updateStatus(id, status);
-    await loadDay(currentDateStr);
-    const labels = { confirmed: 'Turno confirmado', completed: 'Turno marcado como hecho' };
+    closeModal('detailModal');
+    await loadDay(currentDateStr, { silent: true });
+    const labels = {
+      confirmed: 'Turno confirmado',
+      completed: 'Turno marcado como hecho',
+      pending:   'Turno restaurado'
+    };
     showToast(labels[status] || 'Estado actualizado', 'success');
-  } catch { showToast('Error al actualizar. Intenta de nuevo.', 'error'); }
+  } catch (err) {
+    console.error(err);
+    showToast(isSlotTakenError(err)
+      ? 'Esa hora ya está ocupada por otro turno.'
+      : 'Error al actualizar. Intenta de nuevo.', 'error');
+  }
 }
 
 async function cancelAppt(id) {
-  if (!confirm('¿Cancelar este turno?')) return;
+  if (!confirm('¿Cancelar este turno? El horario quedará libre para otros clientes.')) return;
   try {
     await DB.updateStatus(id, 'cancelled');
-    await loadDay(currentDateStr);
+    closeModal('detailModal');
+    await loadDay(currentDateStr, { silent: true });
     showToast('Turno cancelado', 'info');
-  } catch { showToast('Error al cancelar.', 'error'); }
+  } catch (err) {
+    console.error(err);
+    showToast('Error al cancelar. Intenta de nuevo.', 'error');
+  }
 }
 
 async function unblockSlot(id) {
   try {
     await DB.deleteBlockedSlot(id);
-    await loadDay(currentDateStr);
+    await loadDay(currentDateStr, { silent: true });
     showToast('Horario desbloqueado', 'success');
-  } catch { showToast('Error al desbloquear.', 'error'); }
-}
-
-function quickAddAppt(slot) {
-  openAddModal(currentDateStr, slot);
+  } catch (err) {
+    console.error(err);
+    showToast('Error al desbloquear. Intenta de nuevo.', 'error');
+  }
 }
 
 // ── DETAIL MODAL ──────────────────────────────────────────────
-let _detailAppts = [];
+function detailRow(icon, label, valueHTML) {
+  return `
+    <div class="detail-row">
+      <span class="detail-row__icon">${icon}</span>
+      <div>
+        <div class="detail-row__label">${label}</div>
+        <div class="detail-row__value">${valueHTML}</div>
+      </div>
+    </div>`;
+}
 
 async function openDetail(id) {
-  const appts = await DB.getAppointmentsForDate(currentDateStr);
-  const appt  = appts.find(a => a.id === id);
+  let appt;
+  try {
+    appt = await DB.getAppointment(id);
+  } catch (err) {
+    console.error(err);
+    showToast('No se pudo abrir el turno.', 'error');
+    return;
+  }
   if (!appt) return;
 
-  _detailAppts = appts;
+  const time = appt.appointment_time.slice(0, 5);
+  $('detailTitle').innerHTML = `<span>📋</span>${escHtml(appt.client_name)}`;
+  $('detailBody').innerHTML = [
+    detailRow('✂️', 'Servicio', escHtml(appt.service)),
+    detailRow('📅', 'Fecha', escHtml(formatDateDisplay(appt.appointment_date))),
+    detailRow('🕐', 'Hora', `${escHtml(time)} hrs`),
+    detailRow('📞', 'Teléfono', `<a href="tel:${escHtml(appt.client_phone)}">${escHtml(appt.client_phone)}</a>`),
+    appt.notes ? detailRow('📝', 'Notas', escHtml(appt.notes)) : '',
+    detailRow('📌', 'Estado', statusLabel(appt.status)),
+    detailRow('🕒', 'Reservado', escHtml(new Date(appt.created_at).toLocaleString('es-CL')))
+  ].join('');
 
-  $('detailTitle').innerHTML = `<span>📋</span>${appt.client_name}`;
-  $('detailBody').innerHTML = `
-    <div class="detail-row">
-      <span class="detail-row__icon">✂️</span>
-      <div>
-        <div class="detail-row__label">Servicio</div>
-        <div class="detail-row__value">${escHtml(appt.service)}</div>
-      </div>
-    </div>
-    <div class="detail-row">
-      <span class="detail-row__icon">📅</span>
-      <div>
-        <div class="detail-row__label">Fecha</div>
-        <div class="detail-row__value">${formatDateDisplay(appt.appointment_date)}</div>
-      </div>
-    </div>
-    <div class="detail-row">
-      <span class="detail-row__icon">🕐</span>
-      <div>
-        <div class="detail-row__label">Hora</div>
-        <div class="detail-row__value">${appt.appointment_time.slice(0,5)} hs</div>
-      </div>
-    </div>
-    <div class="detail-row">
-      <span class="detail-row__icon">📞</span>
-      <div>
-        <div class="detail-row__label">Teléfono</div>
-        <div class="detail-row__value">
-          <a href="tel:${escHtml(appt.client_phone)}" style="color:var(--gold)">${escHtml(appt.client_phone)}</a>
-        </div>
-      </div>
-    </div>
-    ${appt.notes ? `
-    <div class="detail-row">
-      <span class="detail-row__icon">📝</span>
-      <div>
-        <div class="detail-row__label">Notas</div>
-        <div class="detail-row__value">${escHtml(appt.notes)}</div>
-      </div>
-    </div>` : ''}
-    <div class="detail-row">
-      <span class="detail-row__icon">📌</span>
-      <div>
-        <div class="detail-row__label">Estado</div>
-        <div class="detail-row__value">${statusLabel(appt.status)}</div>
-      </div>
-    </div>
-    <div class="detail-row">
-      <span class="detail-row__icon">🕒</span>
-      <div>
-        <div class="detail-row__label">Reservado</div>
-        <div class="detail-row__value">${new Date(appt.created_at).toLocaleString('es-CL')}</div>
-      </div>
-    </div>
-  `;
+  const phone = waNumber(appt.client_phone);
+  const firstName = appt.client_name.split(' ')[0];
+  const reminder = `Hola ${firstName}! Te recuerdo tu hora en ${CONFIG.business.name} ` +
+    `el ${formatDateDisplay(appt.appointment_date)} a las ${time} hrs (${appt.service}). ¡Te espero! 💈`;
 
+  const id_ = escHtml(appt.id);
   $('detailActions').innerHTML = `
-    <button class="btn btn--ghost" onclick="closeModal('detailModal')">Cerrar</button>
-    <a href="https://wa.me/${escHtml(appt.client_phone?.replace(/\D/g,''))}"
-       target="_blank" rel="noopener"
-       class="btn btn--gold-outline">💬 WhatsApp</a>
+    ${isValidPhone(appt.client_phone) ? `
+      <a href="https://wa.me/${phone}?text=${encodeURIComponent(reminder)}" target="_blank" rel="noopener"
+         class="btn btn--gold-outline">💬 Recordatorio</a>` : ''}
+    ${appt.status === 'cancelled'
+      ? `<button class="btn btn--ghost" data-action="status" data-status="pending" data-id="${id_}">↺ Restaurar</button>`
+      : ''}
+    <button class="btn btn--ghost" data-action="close">Cerrar</button>
   `;
 
   openModal('detailModal');
 }
+
+$('detailActions').addEventListener('click', e => {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  if (btn.dataset.action === 'close')  closeModal('detailModal');
+  if (btn.dataset.action === 'status') changeStatus(btn.dataset.id, btn.dataset.status);
+});
 
 // ── MODAL HELPERS ─────────────────────────────────────────────
 function openModal(id) {
@@ -610,61 +570,74 @@ function openModal(id) {
 }
 function closeModal(id) {
   $(id).classList.remove('open');
-  document.body.style.overflow = '';
+  if (!document.querySelector('.admin-modal-overlay.open')) document.body.style.overflow = '';
 }
 
-// Close on overlay click
-['addModal','blockModal','detailModal'].forEach(id => {
-  $(id)?.addEventListener('click', e => {
-    if (e.target === $(id)) closeModal(id);
-  });
+['addModal', 'blockModal', 'detailModal'].forEach(id => {
+  $(id).addEventListener('click', e => { if (e.target === $(id)) closeModal(id); });
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.querySelectorAll('.admin-modal-overlay.open').forEach(m => closeModal(m.id));
 });
 
 // ── ADD APPOINTMENT MODAL ─────────────────────────────────────
+function renderServiceSelect() {
+  $('addService').innerHTML = CONFIG.services
+    .map((s, i) => `<option value="${i}">${escHtml(s.name)} · ${s.duration} min${s.price ? ' · ' + escHtml(s.price) : ''}</option>`)
+    .join('');
+}
+
 function openAddModal(dateStr = currentDateStr, preSlot = '') {
   $('addName').value  = '';
   $('addPhone').value = '';
   $('addNotes').value = '';
-  $('addDate').value  = dateStr;
-  $('addDate').min    = toLocalDateStr(new Date());
-  populateSlotSelect('addDate', 'addTime', dateStr, preSlot);
+  $('addService').value = '0';
+  $('addDate').value  = dateStr < todayStr() ? todayStr() : dateStr;
+  $('addDate').min    = todayStr();
+  populateFreeSlots(preSlot);
   openModal('addModal');
+  setTimeout(() => $('addName').focus(), 150);
 }
 
-function populateSlotSelect(dateInputId, selectId, dateStr, preSlot = '') {
-  const slots  = generateSlots(dateStr);
-  const select = $(selectId);
-  select.innerHTML = '';
+/** Llena el selector solo con horarios libres (no ocupados ni bloqueados) */
+async function populateFreeSlots(preSlot = '') {
+  const select = $('addTime');
+  const dateStr = $('addDate').value;
+  select.innerHTML = '<option value="">Cargando…</option>';
+  if (!dateStr) { select.innerHTML = '<option value="">Selecciona primero la fecha</option>'; return; }
 
-  if (slots.length === 0) {
-    select.innerHTML = '<option value="">Sin horarios disponibles</option>';
-    return;
+  try {
+    const busy = await fetchBusy(dateStr);
+    if ($('addDate').value !== dateStr) return; // cambió la fecha mientras cargaba
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const free = generateSlots(parseDateStr(dateStr)).filter(s =>
+      !busy.taken.includes(s) && !findBlock(s, busy.blocked) &&
+      !(dateStr === todayStr() && toMin(s) + CONFIG.slotDuration <= nowMin));
+
+    select.innerHTML = free.length
+      ? free.map(s => `<option value="${s}"${s === preSlot ? ' selected' : ''}>${s}</option>`).join('')
+      : '<option value="">Sin horarios libres este día</option>';
+  } catch (err) {
+    console.error(err);
+    select.innerHTML = '<option value="">Error al cargar horarios</option>';
   }
-
-  slots.forEach(s => {
-    const opt = document.createElement('option');
-    opt.value = s;
-    opt.textContent = s;
-    if (s === preSlot) opt.selected = true;
-    select.appendChild(opt);
-  });
 }
 
-$('addDate').addEventListener('change', () => {
-  populateSlotSelect('addDate', 'addTime', $('addDate').value);
-});
-
+$('addDate').addEventListener('change', () => populateFreeSlots());
 $('addModalCancel').addEventListener('click', () => closeModal('addModal'));
 
 $('addModalConfirm').addEventListener('click', async () => {
-  const name  = $('addName').value.trim();
-  const phone = $('addPhone').value.trim();
-  const date  = $('addDate').value;
-  const time  = $('addTime').value;
-  const notes = $('addNotes').value.trim();
+  const name    = $('addName').value.trim();
+  const phone   = $('addPhone').value.trim();
+  const date    = $('addDate').value;
+  const time    = $('addTime').value;
+  const notes   = $('addNotes').value.trim();
+  const service = CONFIG.services[Number($('addService').value)] || CONFIG.services[0];
 
   if (!name)  { showToast('Ingresa el nombre del cliente.', 'error'); return; }
-  if (!phone) { showToast('Ingresa el teléfono.', 'error'); return; }
   if (!date || !time) { showToast('Selecciona fecha y horario.', 'error'); return; }
 
   $('addBtnLabel').classList.add('hidden');
@@ -674,20 +647,25 @@ $('addModalConfirm').addEventListener('click', async () => {
   try {
     await DB.createAppointment({
       client_name:      name,
-      client_phone:     phone,
-      service:          CONFIG.services[0].name,
+      client_phone:     phone || 'Sin teléfono',
+      service:          service.name,
       appointment_date: date,
       appointment_time: time + ':00',
       notes:            notes || null,
       status:           'confirmed'
     });
-
     closeModal('addModal');
-    await loadDay(currentDateStr);
-    showToast('Turno agregado correctamente', 'success');
+    if (date !== currentDateStr) await loadDay(date);
+    else await loadDay(currentDateStr, { silent: true });
+    showToast('Turno agregado', 'success');
   } catch (err) {
     console.error(err);
-    showToast('Error al guardar. Intenta de nuevo.', 'error');
+    if (isSlotTakenError(err)) {
+      showToast('Esa hora se acaba de ocupar. Elige otra.', 'error');
+      populateFreeSlots();
+    } else {
+      showToast('Error al guardar. Intenta de nuevo.', 'error');
+    }
   } finally {
     $('addBtnLabel').classList.remove('hidden');
     $('addBtnSpinner').classList.add('hidden');
@@ -696,57 +674,59 @@ $('addModalConfirm').addEventListener('click', async () => {
 });
 
 // ── BLOCK SLOT MODAL ──────────────────────────────────────────
+function dayBounds(dateStr) {
+  const slots = generateSlots(parseDateStr(dateStr));
+  if (!slots.length) return null;
+  return { slots, end: toTimeStr(toMin(slots[slots.length - 1]) + CONFIG.slotDuration) };
+}
+
 function openBlockModal() {
-  $('blockDate').value   = currentDateStr;
-  $('blockDate').min     = toLocalDateStr(new Date());
-  $('blockReason').value = '';
-  populateBlockSlots($('blockDate').value);
+  $('blockDate').value     = currentDateStr < todayStr() ? todayStr() : currentDateStr;
+  $('blockDate').min       = todayStr();
+  $('blockReason').value   = '';
+  $('blockAllDay').checked = false;
+  populateBlockSlots();
   openModal('blockModal');
 }
 
-function populateBlockSlots(dateStr) {
-  const slots = generateSlots(dateStr);
-  const selectStart = $('blockStart');
-  const selectEnd   = $('blockEnd');
+function populateBlockSlots() {
+  const bounds = dayBounds($('blockDate').value || todayStr());
+  const allDay = $('blockAllDay').checked;
+  $('blockRange').classList.toggle('hidden', allDay);
 
-  selectStart.innerHTML = '<option value="">-- Desde --</option>';
-  selectEnd.innerHTML   = '<option value="">-- Hasta --</option>';
-
-  slots.forEach(s => {
-    const opt1 = document.createElement('option');
-    opt1.value = s; opt1.textContent = s;
-    selectStart.appendChild(opt1);
-
-    const opt2 = document.createElement('option');
-    opt2.value = s; opt2.textContent = s;
-    selectEnd.appendChild(opt2);
-  });
-
-  // Add one extra end option (after last slot)
-  if (slots.length > 0) {
-    const lastSlot = slots[slots.length - 1];
-    const [h, m]   = lastSlot.split(':').map(Number);
-    const nextMin  = h * 60 + m + CONFIG.slotDuration;
-    const extraH   = Math.floor(nextMin/60).toString().padStart(2,'0');
-    const extraM   = (nextMin%60).toString().padStart(2,'0');
-    const extra    = `${extraH}:${extraM}`;
-    const opt = document.createElement('option');
-    opt.value = extra; opt.textContent = extra;
-    selectEnd.appendChild(opt);
+  if (!bounds) {
+    $('blockStart').innerHTML = '<option value="">No se trabaja este día</option>';
+    $('blockEnd').innerHTML   = '<option value="">—</option>';
+    return;
   }
+  $('blockStart').innerHTML = bounds.slots.map(s => `<option value="${s}">${s}</option>`).join('');
+  populateBlockEnd();
 }
 
-$('blockDate').addEventListener('change', () => populateBlockSlots($('blockDate').value));
+/** "Hasta" solo ofrece horas posteriores a "Desde" */
+function populateBlockEnd() {
+  const bounds = dayBounds($('blockDate').value || todayStr());
+  if (!bounds) return;
+  const start = $('blockStart').value;
+  const ends = [...bounds.slots, bounds.end].filter(s => s > start);
+  $('blockEnd').innerHTML = ends.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+$('blockDate').addEventListener('change', populateBlockSlots);
+$('blockAllDay').addEventListener('change', populateBlockSlots);
+$('blockStart').addEventListener('change', populateBlockEnd);
 $('blockModalCancel').addEventListener('click', () => closeModal('blockModal'));
 
 $('blockModalConfirm').addEventListener('click', async () => {
   const date   = $('blockDate').value;
-  const start  = $('blockStart').value;
-  const end    = $('blockEnd').value;
+  const bounds = date && dayBounds(date);
+  const allDay = $('blockAllDay').checked;
+  const start  = allDay ? bounds?.slots[0] : $('blockStart').value;
+  const end    = allDay ? bounds?.end      : $('blockEnd').value;
   const reason = $('blockReason').value.trim();
 
-  if (!date || !start || !end) { showToast('Completa todos los campos.', 'error'); return; }
-  if (start >= end) { showToast('La hora de fin debe ser mayor a la de inicio.', 'error'); return; }
+  if (!bounds) { showToast('Ese día no se trabaja.', 'error'); return; }
+  if (!start || !end || start >= end) { showToast('Revisa el rango de horas.', 'error'); return; }
 
   $('blockBtnLabel').classList.add('hidden');
   $('blockBtnSpinner').classList.remove('hidden');
@@ -757,11 +737,11 @@ $('blockModalConfirm').addEventListener('click', async () => {
       slot_date:  date,
       start_time: start + ':00',
       end_time:   end + ':00',
-      reason:     reason || null
+      reason:     reason || (allDay ? 'Día completo' : null)
     });
-
     closeModal('blockModal');
-    await loadDay(currentDateStr);
+    if (date !== currentDateStr) await loadDay(date);
+    else await loadDay(currentDateStr, { silent: true });
     showToast('Horario bloqueado', 'success');
   } catch (err) {
     console.error(err);
@@ -774,37 +754,45 @@ $('blockModalConfirm').addEventListener('click', async () => {
 });
 
 // ── DATE NAVIGATION ───────────────────────────────────────────
-function offsetDate(dateStr, days) {
-  const [y,m,d] = dateStr.split('-').map(Number);
-  const dt = new Date(y, m-1, d);
-  dt.setDate(dt.getDate() + days);
-  return toLocalDateStr(dt);
-}
-
 $('prevDay').addEventListener('click', () => loadDay(offsetDate(currentDateStr, -1)));
 $('nextDay').addEventListener('click', () => loadDay(offsetDate(currentDateStr, +1)));
-$('goToday').addEventListener('click', () => loadDay(toLocalDateStr(new Date())));
+$('goToday').addEventListener('click', () => loadDay(todayStr()));
+$('navDatePicker').addEventListener('change', e => { if (e.target.value) loadDay(e.target.value); });
+$('navCenter').addEventListener('click', () => {
+  try { $('navDatePicker').showPicker(); } catch { $('navDatePicker').focus(); }
+});
 
-$('logoutBtn').addEventListener('click', () => {
-  if (confirm('¿Cerrar sesión?')) {
-    Auth.logout();
-    $('dashboard').classList.add('hidden');
-    $('loginScreen').classList.remove('hidden');
-    pinEntry = '';
-    updatePinDots();
-  }
+$('logoutBtn').addEventListener('click', async () => {
+  if (!confirm('¿Cerrar sesión?')) return;
+  await Auth.logout();
+  hideDashboard();
 });
 
 $('addApptBtn').addEventListener('click', () => openAddModal());
 $('blockSlotBtn').addEventListener('click', openBlockModal);
 
-// ── INIT ──────────────────────────────────────────────────────
-function init() {
-  DB.init();
-  initPinKeyboard();
+// Al volver a la app (el celular la suspende), se recarga la agenda
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !$('dashboard').classList.contains('hidden')) {
+    scheduleRefresh();
+  }
+});
 
-  if (Auth.isAuthenticated()) {
-    showDashboard();
+// ── INIT ──────────────────────────────────────────────────────
+async function init() {
+  initPinKeyboard();
+  renderServiceSelect();
+
+  if (!IS_DEMO) {
+    sb.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_OUT' && !$('dashboard').classList.contains('hidden')) hideDashboard();
+    });
+  }
+
+  try {
+    if (await Auth.isAuthenticated()) showDashboard();
+  } catch (err) {
+    console.error(err);
   }
 }
 

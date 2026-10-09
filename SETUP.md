@@ -1,146 +1,100 @@
 # 🔧 Guía de Configuración — Cortes Zahir
 
-Esta guía te explica cómo conectar la app a Supabase para que los datos
-se guarden en la nube y el barbero los vea en tiempo real desde cualquier dispositivo.
+Cómo dejar la app funcionando en internet, con los datos guardados en la nube
+(Supabase) para que el barbero vea las reservas en tiempo real desde su celular.
+
+> Si `config.js` no tiene datos de Supabase, la app funciona en **Modo Demo**
+> (los datos quedan solo en ese navegador; PIN demo: `123456`).
 
 ---
 
-## Paso 1 — Crear tu proyecto en Supabase (gratis)
+## Paso 1 — Proyecto en Supabase (gratis)
 
-1. Entra a **https://supabase.com** y creá una cuenta gratuita (puedes usar tu Gmail)
-2. Haz click en **"New project"**
-3. Elige un nombre (ej: `cortes-zahir`) y una contraseña segura para la base de datos
-4. Selecciona la región más cercana (ej: South America)
-5. Esperá ~2 minutos a que se cree el proyecto
-
----
-
-## Paso 2 — Crear las tablas de la base de datos
-
-1. En tu proyecto de Supabase, andá a **SQL Editor** (menú izquierdo)
-2. Haz click en **"New query"**
-3. Copia y pegá este código SQL y haz click en **"Run"**:
-
-```sql
--- Tabla de turnos
-CREATE TABLE appointments (
-  id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  client_name  VARCHAR(100) NOT NULL,
-  client_phone VARCHAR(30)  NOT NULL,
-  service      VARCHAR(80)  NOT NULL DEFAULT 'Corte de pelo',
-  appointment_date DATE     NOT NULL,
-  appointment_time TIME     NOT NULL,
-  status       VARCHAR(20)  NOT NULL DEFAULT 'pending'
-               CHECK (status IN ('pending','confirmed','completed','cancelled')),
-  notes        TEXT,
-  created_at   TIMESTAMPTZ  DEFAULT NOW()
-);
-
--- Tabla de horarios bloqueados
-CREATE TABLE blocked_slots (
-  id         UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  slot_date  DATE NOT NULL,
-  start_time TIME NOT NULL,
-  end_time   TIME NOT NULL,
-  reason     VARCHAR(100)
-);
-
--- Habilitar Row Level Security
-ALTER TABLE appointments   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE blocked_slots  ENABLE ROW LEVEL SECURITY;
-
--- Políticas de acceso:
--- Los clientes pueden VER y CREAR turnos
-CREATE POLICY "Public read appointments"
-  ON appointments FOR SELECT USING (true);
-
-CREATE POLICY "Public insert appointments"
-  ON appointments FOR INSERT WITH CHECK (true);
-
--- Solo usuarios autenticados pueden modificar/borrar
--- (por ahora abrimos todo — se puede restringir más adelante)
-CREATE POLICY "Open update appointments"
-  ON appointments FOR UPDATE USING (true);
-
-CREATE POLICY "Open delete appointments"
-  ON appointments FOR DELETE USING (true);
-
--- Horarios bloqueados: acceso completo (solo el barbero los usa)
-CREATE POLICY "Open blocked_slots"
-  ON blocked_slots FOR ALL USING (true);
-
--- Habilitar tiempo real para el panel del barbero
-ALTER PUBLICATION supabase_realtime ADD TABLE appointments;
-```
+1. Entra a **https://supabase.com** con tu cuenta.
+2. Si el proyecto anterior aparece **pausado**, haz click en **"Restore project"**.
+   Si ya no existe, crea uno nuevo con **"New project"** (región: South America).
+3. Espera ~2 minutos a que quede listo.
 
 ---
 
-## Paso 3 — Obtener las credenciales
+## Paso 2 — Crear las tablas y la seguridad
 
-1. En Supabase, andá a **Settings → API** (menú izquierdo)
-2. Copia los siguientes valores:
-   - **Project URL** → algo como `https://abcxyz.supabase.co`
-   - **anon public** (bajo "Project API keys")
+1. En Supabase, ve a **SQL Editor → New query**.
+2. Copia **todo** el contenido del archivo [`supabase/schema.sql`](supabase/schema.sql), pégalo y haz click en **Run**.
+
+Esto crea las tablas y deja la base segura:
+- Los clientes **solo pueden crear** reservas. No pueden ver nombres ni teléfonos de otros clientes, ni modificar o borrar nada.
+- Dos personas **no pueden reservar la misma hora** (aunque lo hagan al mismo tiempo).
+- No se puede reservar en horas pasadas ni en horarios bloqueados.
+- Solo el barbero (usuario autenticado) puede ver y administrar la agenda.
+
+El script se puede ejecutar de nuevo sin problemas (sirve también para actualizar una base antigua).
 
 ---
 
-## Paso 4 — Actualizar config.js
+## Paso 3 — Crear el usuario del barbero (su PIN)
 
-Abrí el archivo `config.js` y reemplazá:
+1. Ve a **Authentication → Users → Add user → Create new user**.
+2. **Email:** el mismo que está en `config.js` → `adminEmail` (por defecto `barbero@corteszahir.cl`; no necesita ser un correo real).
+3. **Password:** el PIN de **6 dígitos** que usará el barbero (ej: `482915`). No uses `123456`.
+4. Marca **"Auto Confirm User"** y crea el usuario.
+
+### ⚠️ Muy importante: desactivar registros nuevos
+Ve a **Authentication → Sign In / Providers → Email** (o *Authentication → Settings*)
+y **desactiva "Allow new users to sign up"**. Si no, cualquier persona podría
+crearse una cuenta y entrar a la agenda.
+
+> Para cambiar el PIN más adelante: Authentication → Users → (el usuario) → **Reset password** / editar contraseña.
+
+---
+
+## Paso 4 — Conectar la app (config.js)
+
+En Supabase ve a **Project Settings → API** y copia:
+- **Project URL** → algo como `https://abcxyz.supabase.co`
+- **anon public key**
+
+Pégalos en `config.js`:
 
 ```javascript
 supabase: {
-  url: 'TU_SUPABASE_URL',          // ← pegá tu Project URL aquí
-  anonKey: 'TU_SUPABASE_ANON_KEY'  // ← pegá tu anon key aquí
+  url: 'https://abcxyz.supabase.co',
+  anonKey: 'eyJhbGciOi...'
 },
 ```
 
-También **cambiá el PIN** del administrador:
-```javascript
-adminPin: '1234',  // ← cambialo a algo solo vos sabés
-```
+La *anon key* es pública por diseño (va en el navegador); la seguridad la da el Paso 2.
+**Nunca** pongas en este archivo la *service_role key*.
+
+En `config.js` también puedes editar: servicios, precios, horarios, días laborales,
+dirección y WhatsApp del local (aparece un botón para que el cliente avise su reserva).
 
 ---
 
-## Paso 5 — Poner la app online (gratis)
+## Paso 5 — Publicar la app (GitHub Pages, gratis)
 
-### Opción A: GitHub Pages (más fácil, 100% gratis)
-1. Creá una cuenta en **https://github.com**
-2. Creá un repositorio nuevo y subí todos los archivos del proyecto
-3. Andá a **Settings → Pages** y activalo
-4. Tu app estará en `https://tunombre.github.io/cortes-zahir`
-
-### Opción B: Netlify (también gratis, dominio bonito)
-1. Andá a **https://netlify.com** y creá cuenta
-2. Arrastrá la carpeta del proyecto al sitio de Netlify
-3. Listo — te da una URL tipo `cortes-zahir.netlify.app`
+1. Sube los cambios al repositorio: `git push`.
+2. En GitHub → repositorio **proyectoBARBERO** → **Settings → Pages**.
+3. En *Source* elige **Deploy from a branch**, rama `main`, carpeta `/ (root)` → **Save**.
+4. En 1–2 minutos queda en:
+   - Clientes: `https://diegojoaquin.github.io/proyectoBARBERO/`
+   - Barbero: `https://diegojoaquin.github.io/proyectoBARBERO/admin.html`
 
 ---
 
-## Paso 6 — Instalar como app en el celular
+## Paso 6 — Evitar que Supabase se pause
 
-### En Android (Chrome):
-1. Abrí la URL en Chrome
-2. Tocá el menú (⋮) → **"Agregar a pantalla de inicio"**
-3. ¡Listo! Aparece como app nativa
+El plan gratis **pausa el proyecto tras 7 días sin actividad** (eso fue lo que pasó con la versión anterior).
+El repositorio incluye `.github/workflows/keepalive.yml`, que hace una consulta cada 3 días automáticamente.
 
-### En iPhone (Safari):
-1. Abrí la URL en Safari
-2. Tocá el botón compartir (□↑) → **"Agregar a inicio"**
+- Revisa que funcione en GitHub → **Actions → Supabase keep-alive → Run workflow**.
+- GitHub desactiva las tareas programadas si el repositorio pasa 60 días sin commits; si te llega un correo avisando, entra a *Actions* y vuelve a activarla.
 
 ---
 
-## ⚠️ Nota importante sobre Supabase gratis
+## Paso 7 — Instalar como app en el celular
 
-El plan gratuito de Supabase **pausa el proyecto si no hay actividad por 7 días**.
-Para evitarlo, puedes:
-- Acceder al admin al menos 1 vez por semana
-- Configurar un "ping" automático (te explicamos si lo necesitas)
-- Cuando el negocio crezca, upgradeás al plan Pro (~$25/mes) que nunca pausa
+- **Android (Chrome):** abre la URL → menú (⋮) → **"Agregar a pantalla de inicio"**.
+- **iPhone (Safari):** abre la URL → botón compartir (□↑) → **"Agregar a inicio"**.
 
----
-
-## ❓ ¿Necesitás ayuda?
-
-Si tienes dudas con algún paso, no dudes en preguntar. Todo esto está
-diseñado para ser lo más simple posible sin costo mensual. 💈
+Para el barbero, instala directamente la URL de `admin.html`.

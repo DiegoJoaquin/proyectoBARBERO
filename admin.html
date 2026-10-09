@@ -3,9 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#C9A84C">
+  <meta name="theme-color" content="#080808">
   <meta name="robots" content="noindex, nofollow">
   <title>Cortes Zahir — Panel del Barbero</title>
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="admin-page">
@@ -18,12 +22,7 @@
       <p class="login-subtitle">Panel del Barbero</p>
 
       <!-- PIN Dots -->
-      <div class="pin-display" id="pinDisplay" role="status" aria-label="Ingresa tu PIN">
-        <span class="pin-dot" id="pd0"></span>
-        <span class="pin-dot" id="pd1"></span>
-        <span class="pin-dot" id="pd2"></span>
-        <span class="pin-dot" id="pd3"></span>
-      </div>
+      <div class="pin-display" id="pinDisplay" role="status" aria-label="Ingresa tu PIN"></div>
 
       <!-- PIN Keyboard -->
       <div class="pin-keyboard" role="group" aria-label="Teclado numérico">
@@ -83,10 +82,11 @@
     <!-- Date Navigation -->
     <nav class="date-nav" aria-label="Navegación de fecha">
       <button class="date-nav__btn" id="prevDay" aria-label="Día anterior">‹</button>
-      <div class="date-nav__center">
+      <button class="date-nav__center" id="navCenter" aria-label="Elegir fecha">
         <div class="date-nav__label" id="navLabel">Hoy</div>
         <div class="date-nav__date" id="navDate">—</div>
-      </div>
+        <input type="date" id="navDatePicker" class="date-nav__picker" tabindex="-1" aria-hidden="true">
+      </button>
       <button class="date-nav__btn" id="nextDay" aria-label="Día siguiente">›</button>
     </nav>
     <div class="date-nav__today">
@@ -122,11 +122,15 @@
 
       <div class="form-group">
         <label for="addName">Nombre del cliente</label>
-        <input type="text" id="addName" placeholder="Ej: Juan Pérez" autocomplete="off">
+        <input type="text" id="addName" placeholder="Ej: Juan Pérez" autocomplete="off" maxlength="100">
       </div>
       <div class="form-group">
-        <label for="addPhone">Teléfono</label>
-        <input type="tel" id="addPhone" placeholder="+56 9 0000 0000" autocomplete="off">
+        <label for="addPhone">Teléfono (opcional)</label>
+        <input type="tel" id="addPhone" placeholder="+56 9 1234 5678" autocomplete="off" maxlength="30">
+      </div>
+      <div class="form-group">
+        <label for="addService">Servicio</label>
+        <select id="addService"></select>
       </div>
       <div class="form-group">
         <label for="addDate">Fecha</label>
@@ -134,13 +138,13 @@
       </div>
       <div class="form-group">
         <label for="addTime">Horario</label>
-        <select id="addTime" class="admin-modal select">
+        <select id="addTime">
           <option value="">Selecciona primero la fecha</option>
         </select>
       </div>
       <div class="form-group">
         <label for="addNotes">Notas (opcional)</label>
-        <textarea id="addNotes" rows="2" placeholder="Indicaciones especiales…"></textarea>
+        <textarea id="addNotes" rows="2" placeholder="Indicaciones especiales…" maxlength="500"></textarea>
       </div>
 
       <div class="admin-modal__actions">
@@ -165,21 +169,23 @@
         <label for="blockDate">Fecha</label>
         <input type="date" id="blockDate" class="admin-date-input">
       </div>
-      <div class="form-group">
-        <label for="blockStart">Desde</label>
-        <select id="blockStart" class="admin-modal select">
-          <option value="">Selecciona primero la fecha</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label for="blockEnd">Hasta</label>
-        <select id="blockEnd" class="admin-modal select">
-          <option value="">Selecciona desde primero</option>
-        </select>
+      <label class="checkbox-row">
+        <input type="checkbox" id="blockAllDay">
+        <span>Bloquear el día completo</span>
+      </label>
+      <div id="blockRange">
+        <div class="form-group">
+          <label for="blockStart">Desde</label>
+          <select id="blockStart"></select>
+        </div>
+        <div class="form-group">
+          <label for="blockEnd">Hasta</label>
+          <select id="blockEnd"></select>
+        </div>
       </div>
       <div class="form-group">
         <label for="blockReason">Motivo (opcional)</label>
-        <input type="text" id="blockReason" placeholder="Ej: Almuerzo, Reunión…" autocomplete="off">
+        <input type="text" id="blockReason" placeholder="Ej: Almuerzo, Vacaciones…" autocomplete="off" maxlength="100">
       </div>
 
       <div class="admin-modal__actions">
@@ -210,6 +216,7 @@
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="config.js"></script>
+  <script src="common.js"></script>
   <script src="admin.js"></script>
 </body>
 </html>

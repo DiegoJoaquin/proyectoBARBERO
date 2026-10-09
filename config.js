@@ -13,8 +13,8 @@ const CONFIG = {
   //  → Tu proyecto → Settings → API
   // ============================================================
   supabase: {
-    url: 'https://ibewthzypfuefzlcpmct.supabase.co',  // ✅ URL de tu proyecto Supabase
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImliZXd0aHp5cGZ1ZWZ6bGNwbWN0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE1NjUyNjcsImV4cCI6MjA5NzE0MTI2N30.SNVxTiqURcl9E_SRaYM5QryEFC-Kqr8-KFJ8Upw5lUs'  // Tu clave anónima pública
+    url: 'https://haojrpixxqwetftyxqwv.supabase.co',  // ✅ URL de tu proyecto Supabase
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhhb2pycGl4eHF3ZXRmdHl4cXd2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE1NjQ2ODYsImV4cCI6MjEwNzE0MDY4Nn0.sapGsgXnjqjQ9VhV5qb-__IUaQ4mCUeAElObA_fYvzw'  // Tu clave anónima pública
   },
 
   // ============================================================
@@ -23,16 +23,19 @@ const CONFIG = {
   business: {
     name: 'Cortes Zahir',
     tagline: 'Estilo & Precisión',
-    address: 'Tu dirección aquí',
-    phone: '+56 9 0000 0000',
+    address: '',          // Ej: 'Av. Siempre Viva 123, Santiago' (vacío = no se muestra)
+    whatsapp: '',         // Ej: '+56 9 1234 5678' (vacío = no se muestra el botón)
     instagram: '@corteszahir'
   },
 
   // ============================================================
-  //  🔐 PIN DEL ADMINISTRADOR
-  //  ¡IMPORTANTE: Cámbialo antes de usar la app!
+  //  🔐 ACCESO DEL BARBERO
+  //  El PIN NO se guarda aquí (este archivo es público).
+  //  Se crea un usuario en Supabase → Authentication → Users con
+  //  este email y como contraseña un PIN de 6 dígitos (ver SETUP.md).
   // ============================================================
-  adminPin: '1234',
+  adminEmail: 'barbero@corteszahir.cl',
+  adminPinLength: 6,
 
   // ============================================================
   //  ⏰ HORARIOS DE TRABAJO
@@ -85,7 +88,8 @@ const CONFIG = {
       description: 'Promoción (MARTES-MIÉRCOLES-JUEVES). Agendar 2 veces para promoción',
       duration: 15,
       price: '$15.000',
-      icon: '🔥'
+      icon: '🔥',
+      days: [2, 3, 4]   // Solo martes, miércoles y jueves (opcional en cualquier servicio)
     }
   ]
 };

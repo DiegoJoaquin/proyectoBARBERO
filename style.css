@@ -71,6 +71,8 @@ a { color: var(--gold); text-decoration: none; }
 /* ── UTILITIES ───────────────────────────────────────────── */
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+.invisible { visibility: hidden; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 /* ── BUTTONS ─────────────────────────────────────────────── */
 .btn {
@@ -298,10 +300,21 @@ a { color: var(--gold); text-decoration: none; }
 .hero__cta { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .hero__hint {
   font-size: .8rem;
-  color: var(--gray-3);
+  color: var(--gray-2);
   letter-spacing: .08em;
   text-transform: uppercase;
 }
+.hero__info {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 20px;
+  font-size: .85rem;
+  color: var(--gray-2);
+}
+.hero__info:empty { display: none; }
+.hero__info a { color: var(--gray-1); }
+.hero__info a:hover { color: var(--gold); }
 
 /* ── MODAL ───────────────────────────────────────────────── */
 .modal-overlay {
@@ -439,8 +452,9 @@ a { color: var(--gold); text-decoration: none; }
 .service-card__icon { font-size: 1.8rem; flex-shrink: 0; }
 .service-card__info { flex: 1; text-align: left; }
 .service-card__name { font-weight: 600; font-size: .95rem; color: var(--white); }
-.service-card__desc { font-size: .8rem; color: var(--gray-3); margin-top: 2px; }
-.service-card__meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.service-card__desc { font-size: .8rem; color: var(--gray-2); margin-top: 2px; line-height: 1.4; }
+.service-card__days { font-size: .75rem; color: var(--yellow); margin-top: 4px; font-weight: 600; }
+.service-card__meta { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .service-card__duration,
 .service-card__price {
   font-size: .8rem;
@@ -454,6 +468,7 @@ a { color: var(--gold); text-decoration: none; }
   color: var(--gold);
 }
 .service-card__check {
+  flex-shrink: 0;
   width: 22px; height: 22px;
   border-radius: 50%;
   border: 2px solid var(--gray-4);
@@ -492,6 +507,7 @@ a { color: var(--gold); text-decoration: none; }
   transition: var(--t);
 }
 .calendar-nav-btn:hover { background: var(--black-4); color: var(--gold); }
+.calendar-nav-btn:disabled { opacity: .25; pointer-events: none; }
 .calendar-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -518,6 +534,7 @@ a { color: var(--gold); text-decoration: none; }
   transition: var(--t);
   color: var(--white);
   position: relative;
+  width: 100%;
 }
 .cal-day:hover:not(.disabled):not(.other-month) { background: var(--black-4); }
 .cal-day.today { color: var(--gold); font-weight: 700; }
@@ -536,7 +553,7 @@ a { color: var(--gold); text-decoration: none; }
   font-weight: 700;
   box-shadow: var(--shadow-gold);
 }
-.cal-day.disabled { color: var(--black-4); cursor: not-allowed; pointer-events: none; }
+.cal-day.disabled { color: var(--gray-4); cursor: not-allowed; pointer-events: none; }
 .cal-day.other-month { color: var(--black-4); cursor: default; pointer-events: none; }
 .cal-day.working { cursor: pointer; }
 .cal-day.has-availability::before {
@@ -627,7 +644,7 @@ a { color: var(--gold); text-decoration: none; }
   box-shadow: 0 0 0 3px var(--gold-glow);
 }
 .form-group input::placeholder,
-.form-group textarea::placeholder { color: var(--gray-4); }
+.form-group textarea::placeholder { color: var(--gray-3); }
 
 /* Booking Summary */
 .booking-summary {
@@ -703,6 +720,7 @@ a { color: var(--gold); text-decoration: none; }
   line-height: 1.5;
   margin-bottom: 20px;
 }
+.confirm-wa { margin-bottom: 10px; }
 
 /* ================================================================
    ADMIN DASHBOARD — admin.html
@@ -766,6 +784,8 @@ a { color: var(--gold); text-decoration: none; }
 }
 .pin-dot.filled { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 10px var(--gold-glow); }
 .pin-dot.error  { background: var(--red);  border-color: var(--red); }
+.pin-display.checking .pin-dot { animation: pulse .8s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .35; } }
 .pin-keyboard {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -885,7 +905,22 @@ a { color: var(--gold); text-decoration: none; }
   border: 1px solid rgba(255,255,255,.07);
 }
 .date-nav__btn:hover { background: var(--black-4); color: var(--gold); border-color: var(--gold-border); }
-.date-nav__center { text-align: center; }
+.date-nav__center {
+  text-align: center;
+  color: inherit;
+  position: relative;
+  padding: 4px 12px;
+  border-radius: var(--radius-md);
+  transition: var(--t);
+}
+.date-nav__center:hover { background: var(--black-2); }
+.date-nav__picker {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  width: 100%;
+}
 .date-nav__label {
   font-size: .72rem;
   color: var(--gray-3);
@@ -897,8 +932,8 @@ a { color: var(--gold); text-decoration: none; }
   font-size: 1.15rem;
   font-weight: 600;
   color: var(--white);
-  text-transform: capitalize;
 }
+.date-nav__date::first-letter { text-transform: uppercase; }
 .date-nav__today {
   display: flex;
   justify-content: center;
@@ -1006,6 +1041,14 @@ a { color: var(--gold); text-decoration: none; }
   color: var(--gray-2);
   margin-bottom: 10px;
 }
+.appt-card__phone a { color: inherit; }
+.appt-card__notes {
+  font-size: .8rem;
+  color: var(--gray-2);
+  margin: -4px 0 10px;
+  line-height: 1.4;
+  word-break: break-word;
+}
 .appt-card__actions {
   display: flex;
   gap: 6px;
@@ -1015,10 +1058,12 @@ a { color: var(--gold); text-decoration: none; }
 
 /* Free / Blocked Slots */
 .free-slot {
+  width: 100%;
+  text-align: left;
   padding: 10px 16px;
   border-radius: var(--radius-md);
-  border: 1px dashed rgba(255,255,255,.06);
-  color: var(--black-4);
+  border: 1px dashed rgba(255,255,255,.1);
+  color: var(--gray-3);
   font-size: .82rem;
   transition: var(--t);
   cursor: pointer;
@@ -1031,6 +1076,8 @@ a { color: var(--gold); text-decoration: none; }
   background: var(--gold-glow);
   color: var(--gold);
 }
+.free-slot--past { cursor: default; color: var(--gray-4); border-color: rgba(255,255,255,.04); }
+.free-slot--past:hover { background: none; border-color: rgba(255,255,255,.04); color: var(--gray-4); }
 .blocked-slot {
   padding: 12px 16px;
   border-radius: var(--radius-md);
@@ -1061,7 +1108,26 @@ a { color: var(--gold); text-decoration: none; }
 }
 .empty-state__icon { font-size: 3rem; opacity: .3; }
 .empty-state__title { font-size: 1rem; font-weight: 600; color: var(--gray-3); }
-.empty-state__desc  { font-size: .82rem; color: var(--gray-4); max-width: 220px; line-height: 1.5; }
+.empty-state__desc  { font-size: .82rem; color: var(--gray-3); max-width: 240px; line-height: 1.5; }
+.empty-state--compact { padding: 8px 20px 20px; gap: 4px; }
+
+/* Cancelled list */
+.cancelled-list {
+  margin: 16px 0 0 64px;
+  font-size: .82rem;
+  color: var(--gray-3);
+}
+.cancelled-list summary { cursor: pointer; padding: 8px 0; }
+.cancelled-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  text-decoration: line-through;
+}
+.cancelled-item .btn { text-decoration: none; }
 
 /* FAB */
 .fab-group {
@@ -1142,9 +1208,20 @@ a { color: var(--gold); text-decoration: none; }
 }
 .admin-modal__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   padding-top: 8px;
 }
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+  font-size: .9rem;
+  color: var(--gray-1);
+  cursor: pointer;
+}
+.checkbox-row input { width: 18px; height: 18px; accent-color: var(--gold); }
 .admin-modal__actions .btn { flex: 1; }
 
 /* ── APPOINTMENT DETAIL DRAWER ───────────────────────────── */
@@ -1158,7 +1235,8 @@ a { color: var(--gold); text-decoration: none; }
 .detail-row:last-child { border-bottom: none; }
 .detail-row__icon { font-size: 1rem; width: 24px; text-align: center; color: var(--gray-3); flex-shrink: 0; }
 .detail-row__label { font-size: .75rem; color: var(--gray-3); letter-spacing: .06em; text-transform: uppercase; }
-.detail-row__value { font-size: .9rem; font-weight: 600; color: var(--white); }
+.detail-row__value { font-size: .9rem; font-weight: 600; color: var(--white); word-break: break-word; }
+.detail-row__value a { color: var(--gold); }
 
 /* ── DATE PICKER for admin ───────────────────────────────── */
 .admin-date-input {

@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#C9A84C">
+  <meta name="theme-color" content="#080808">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Cortes Zahir — Reserva tu turno</title>
   <meta name="description" content="Reserva tu turno en Cortes Zahir. Corte de pelo profesional con estilo y precisión. Agenda rápida y fácil desde tu celular.">
   <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="style.css">
@@ -18,7 +21,7 @@
   <!-- Demo Banner -->
   <div id="demoBanner" class="demo-banner hidden">
     ⚠️ Modo Demo — los datos se guardan solo en este dispositivo.
-    <a href="SETUP.md" target="_blank">Ver cómo conectar Supabase →</a>
+    <a href="SETUP.md" target="_blank" rel="noopener">Ver cómo conectar Supabase →</a>
   </div>
 
   <!-- ══ HERO ═══════════════════════════════════════════════ -->
@@ -43,6 +46,8 @@
         </button>
         <p class="hero__hint" id="heroHint">Cargando disponibilidad…</p>
       </div>
+
+      <div class="hero__info" id="heroInfo"></div>
     </div>
   </main>
 
@@ -66,7 +71,7 @@
       <!-- ── STEP 1: Servicio ── -->
       <section class="step-panel" id="step1" aria-label="Paso 1: Elige tu servicio">
         <h2>Elige tu servicio ✂️</h2>
-        <div class="services-grid" id="servicesGrid" role="listbox" aria-label="Servicios disponibles"></div>
+        <div class="services-grid" id="servicesGrid" role="group" aria-label="Servicios disponibles"></div>
         <button class="btn btn--primary btn--full" id="step1Next" disabled>Continuar →</button>
       </section>
 
@@ -80,7 +85,7 @@
             <h3 id="calTitle">Junio 2026</h3>
             <button class="calendar-nav-btn" id="calNext" aria-label="Mes siguiente">›</button>
           </div>
-          <div class="calendar-grid" id="calGrid" role="grid" aria-label="Calendario"></div>
+          <div class="calendar-grid" id="calGrid" aria-label="Calendario"></div>
         </div>
 
         <div class="slots-section" id="slotsSection" aria-live="polite">
@@ -120,19 +125,19 @@
           <div class="form-group">
             <label for="clientName">Nombre completo</label>
             <input type="text" id="clientName" name="name"
-              placeholder="Ej: Juan Pérez" required
+              placeholder="Ej: Juan Pérez" required maxlength="100"
               autocomplete="name" inputmode="text">
           </div>
           <div class="form-group">
             <label for="clientPhone">Teléfono / WhatsApp</label>
             <input type="tel" id="clientPhone" name="phone"
-              placeholder="+56 9 0000 0000" required
+              placeholder="+56 9 1234 5678" required maxlength="30"
               autocomplete="tel" inputmode="tel">
           </div>
           <div class="form-group">
             <label for="clientNotes">Indicaciones (opcional)</label>
             <textarea id="clientNotes" name="notes"
-              placeholder="Ej: quiero dejar el costado corto…" rows="2"></textarea>
+              placeholder="Ej: quiero dejar el costado corto…" rows="2" maxlength="500"></textarea>
           </div>
         </form>
 
@@ -149,7 +154,7 @@
       <section class="step-panel hidden confirm-screen" id="stepConfirm" aria-label="Reserva confirmada">
         <div class="confirm-icon" aria-hidden="true">✓</div>
         <h2>¡Turno reservado! 🎉</h2>
-        <p>Tu turno fue agendado correctamente. Anota el código por si necesitas consultarlo.</p>
+        <p>Tu turno quedó agendado. Guarda una captura de pantalla o anota el código.</p>
 
         <div class="confirm-code">
           <div class="confirm-code__label">Código de reserva</div>
@@ -159,8 +164,10 @@
         <div class="confirm-details" id="confirmDetails" aria-label="Detalles de tu turno"></div>
 
         <p class="confirm-note">
-          Para cancelar o modificar tu turno, contacta directamente al barbero.
+          Para cancelar o cambiar tu turno, avísale directamente al barbero.
         </p>
+        <a class="btn btn--gold-outline btn--full confirm-wa hidden" id="confirmWhatsapp"
+           target="_blank" rel="noopener">💬 Avisar por WhatsApp</a>
         <button class="btn btn--primary btn--full" id="confirmClose">Listo 👍</button>
       </section>
     </div>
@@ -172,6 +179,7 @@
   <!-- Supabase CDN -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="config.js"></script>
+  <script src="common.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

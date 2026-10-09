@@ -1,206 +1,116 @@
 /* ============================================================
    app.js — Lógica del Portal de Clientes · Cortes Zahir
+   Requiere: config.js, common.js
    ============================================================ */
 
 'use strict';
 
-// ── DATABASE ABSTRACTION ──────────────────────────────────────
-// Funciona con Supabase cuando está configurado,
-// o con localStorage en modo Demo.
+// ── DATABASE ──────────────────────────────────────────────────
 const DB = {
-  _client: null,
-  isDemo: false,
-
-  _localKey: 'cz_appointments',
-  _blockedKey: 'cz_blocked',
-
-  get _local() {
-    return JSON.parse(localStorage.getItem(this._localKey) || '[]');
-  },
-  set _local(v) {
-    localStorage.setItem(this._localKey, JSON.stringify(v));
-  },
-  get _blocked() {
-    return JSON.parse(localStorage.getItem(this._blockedKey) || '[]');
-  },
-
-  init() {
-    if (CONFIG.supabase.url.startsWith('TU_')) {
-      this.isDemo = true;
-      return;
-    }
-    this._client = window.supabase.createClient(
-      CONFIG.supabase.url,
-      CONFIG.supabase.anonKey
-    );
-  },
-
-  /** Obtiene todos los turnos de una fecha (YYYY-MM-DD) */
-  async getAppointmentsForDate(dateStr) {
-    if (this.isDemo) {
-      return this._local.filter(a => a.appointment_date === dateStr);
-    }
-    const { data, error } = await this._client
-      .from('appointments')
-      .select('appointment_time, status')
-      .eq('appointment_date', dateStr)
-      .neq('status', 'cancelled');
-    return error ? [] : (data || []);
-  },
-
-  /** Obtiene slots bloqueados de una fecha */
-  async getBlockedForDate(dateStr) {
-    if (this.isDemo) {
-      return this._blocked.filter(b => b.slot_date === dateStr);
-    }
-    const { data } = await this._client
-      .from('blocked_slots')
-      .select('start_time, end_time')
-      .eq('slot_date', dateStr);
-    return data || [];
-  },
-
-  /** Crea un nuevo turno */
+  /** Crea un nuevo turno. Devuelve el id generado. */
   async createAppointment(appt) {
-    if (this.isDemo) {
-      const newAppt = {
-        ...appt,
-        id: 'DEMO-' + Math.random().toString(36).slice(2,8).toUpperCase(),
-        status: 'pending',
-        created_at: new Date().toISOString()
-      };
-      this._local = [...this._local, newAppt];
-      return newAppt;
+    const id = crypto.randomUUID();
+    if (IS_DEMO) {
+      const taken = DemoStore.appointments.some(a =>
+        a.appointment_date === appt.appointment_date &&
+        a.appointment_time === appt.appointment_time &&
+        a.status !== 'cancelled');
+      if (taken) throw { code: '23505' };
+      DemoStore.appointments = [...DemoStore.appointments, {
+        ...appt, id, status: 'pending', created_at: new Date().toISOString()
+      }];
+      return id;
     }
-    const { data, error } = await this._client
-      .from('appointments')
-      .insert(appt)
-      .select()
-      .single();
+    // Sin .select(): los clientes no tienen permiso de lectura sobre la tabla
+    const { error } = await sb.from('appointments').insert({ ...appt, id });
     if (error) throw error;
-    return data;
+    return id;
   }
 };
 
-// ── TIME SLOT GENERATOR ───────────────────────────────────────
-function generateSlots(dateObj) {
-  const dow = dateObj.getDay(); // 0=Dom
-  if (!CONFIG.workingDays.includes(dow)) return [];
-
-  const isSat = dow === 6;
-  const { start, end } = isSat
-    ? CONFIG.workingHours.saturday
-    : CONFIG.workingHours.weekdays;
-
-  const toMin = t => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-  const toStr = mins => {
-    const h = Math.floor(mins / 60).toString().padStart(2, '0');
-    const m = (mins % 60).toString().padStart(2, '0');
-    return `${h}:${m}`;
-  };
-
-  const slots = [];
-  let cur = toMin(start);
-  const endMin = toMin(end);
-
-  while (cur + CONFIG.slotDuration <= endMin) {
-    slots.push(toStr(cur));
-    cur += CONFIG.slotDuration;
-  }
-  return slots;
-}
-
 // ── HELPERS ───────────────────────────────────────────────────
-const $ = id => document.getElementById(id);
-
 function formatDateLong(dateObj) {
-  return dateObj.toLocaleDateString('es-CL', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long'
-  });
+  return dateObj.toLocaleDateString('es-CL', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
 function formatDateShort(dateObj) {
-  return dateObj.toLocaleDateString('es-CL', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric'
-  });
+  return dateObj.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function toLocalDateStr(dateObj) {
-  const y = dateObj.getFullYear();
-  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const d = String(dateObj.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
 }
 
-function genCode() {
-  return 'ZHR-' + Math.random().toString(36).slice(2,6).toUpperCase();
+function maxBookingDate() {
+  const d = startOfToday();
+  d.setDate(d.getDate() + CONFIG.maxBookingDaysAhead);
+  return d;
 }
 
-function showToast(msg, type = 'info') {
-  const container = $('toastContainer');
-  const el = document.createElement('div');
-  const icons = { success: '✓', error: '✕', info: 'ℹ' };
-  el.className = `toast toast--${type}`;
-  el.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${msg}</span>`;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+/** Horarios libres de un día (excluye ocupados, bloqueados y ya pasados) */
+function freeSlots(dateObj, busy) {
+  const now = new Date();
+  const isToday = toLocalDateStr(dateObj) === toLocalDateStr(now);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+
+  return generateSlots(dateObj).filter(slot =>
+    !busy.taken.includes(slot) &&
+    !findBlock(slot, busy.blocked) &&
+    !(isToday && toMin(slot) <= nowMin)
+  );
 }
 
 // ── STATE ─────────────────────────────────────────────────────
 const state = {
   step: 1,
-  service: null,       // { id, name, duration, icon }
-  date: null,          // Date object
-  timeSlot: null,      // 'HH:MM'
-  bookedSlots: [],     // ['HH:MM', ...]
-  blockedSlots: [],    // [{ start_time, end_time }]
+  service: null,   // objeto de CONFIG.services
+  date: null,      // Date
+  timeSlot: null,  // 'HH:MM'
   calYear: new Date().getFullYear(),
-  calMonth: new Date().getMonth()
+  calMonth: new Date().getMonth(),
+  loadToken: 0     // evita que una respuesta vieja pise una nueva
 };
 
 // ── CALENDAR ──────────────────────────────────────────────────
-const DAY_LABELS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
 const MONTHS = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'
 ];
 
+function isDateBookable(dateObj) {
+  return CONFIG.workingDays.includes(dateObj.getDay()) &&
+    dateObj >= startOfToday() &&
+    dateObj <= maxBookingDate() &&
+    serviceAvailableOn(state.service, dateObj);
+}
+
 function renderCalendar() {
   const { calYear: y, calMonth: m } = state;
   $('calTitle').textContent = `${MONTHS[m]} ${y}`;
 
+  // Solo se puede navegar entre el mes actual y el mes de la fecha máxima
+  const today = startOfToday();
+  const maxDate = maxBookingDate();
+  const monthIdx = y * 12 + m;
+  $('calPrev').disabled = monthIdx <= today.getFullYear() * 12 + today.getMonth();
+  $('calNext').disabled = monthIdx >= maxDate.getFullYear() * 12 + maxDate.getMonth();
+
   const grid = $('calGrid');
   grid.innerHTML = '';
 
-  // Day labels (starting Mon)
-  const orderedDays = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-  orderedDays.forEach(d => {
+  ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].forEach(d => {
     const el = document.createElement('div');
     el.className = 'cal-day-label';
     el.textContent = d;
     grid.appendChild(el);
   });
 
-  const today = new Date();
-  today.setHours(0,0,0,0);
-  const maxDate = new Date(today);
-  maxDate.setDate(maxDate.getDate() + CONFIG.maxBookingDaysAhead);
-
-  // First day of month (adjust: Mon=0)
-  const firstDay = new Date(y, m, 1);
-  const startDow = (firstDay.getDay() + 6) % 7; // Mon-based
-
+  const startDow = (new Date(y, m, 1).getDay() + 6) % 7; // lunes = 0
   const daysInMonth = new Date(y, m + 1, 0).getDate();
   const daysInPrevMonth = new Date(y, m, 0).getDate();
 
-  // Prev month padding
   for (let i = startDow - 1; i >= 0; i--) {
     const el = document.createElement('div');
     el.className = 'cal-day other-month';
@@ -208,43 +118,30 @@ function renderCalendar() {
     grid.appendChild(el);
   }
 
-  // Current month days
   for (let day = 1; day <= daysInMonth; day++) {
     const dateObj = new Date(y, m, day);
-    dateObj.setHours(0,0,0,0);
-    const dow = dateObj.getDay(); // 0=Sun
-
-    const el = document.createElement('div');
+    const el = document.createElement('button');
+    el.type = 'button';
     el.className = 'cal-day';
     el.textContent = day;
-    el.setAttribute('role', 'gridcell');
     el.setAttribute('aria-label', formatDateLong(dateObj));
 
-    const isWorking = CONFIG.workingDays.includes(dow);
-    const isPast = dateObj < today;
-    const isFuture = dateObj > maxDate;
-    const isToday = dateObj.getTime() === today.getTime();
+    if (dateObj.getTime() === today.getTime()) el.classList.add('today');
 
-    if (isToday) el.classList.add('today');
-
-    if (!isWorking || isPast || isFuture) {
+    if (!isDateBookable(dateObj)) {
       el.classList.add('disabled');
-      el.setAttribute('aria-disabled', 'true');
+      el.disabled = true;
     } else {
       el.classList.add('working');
-
       if (state.date && toLocalDateStr(state.date) === toLocalDateStr(dateObj)) {
         el.classList.add('selected');
-        el.setAttribute('aria-selected', 'true');
+        el.setAttribute('aria-pressed', 'true');
       }
-
       el.addEventListener('click', () => selectDate(dateObj));
     }
-
     grid.appendChild(el);
   }
 
-  // Next month padding
   const totalCells = startDow + daysInMonth;
   const remainder = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
   for (let i = 1; i <= remainder; i++) {
@@ -255,109 +152,94 @@ function renderCalendar() {
   }
 }
 
+function resetSlotsSection() {
+  $('slotsSection').innerHTML = `
+    <div class="slots-empty">
+      <span>📆</span>
+      <span>Selecciona un día para ver los horarios</span>
+    </div>`;
+}
+
 async function selectDate(dateObj) {
   state.date = dateObj;
   state.timeSlot = null;
   $('step2Next').disabled = true;
-
   renderCalendar();
+  await loadSlots();
+}
 
-  // Show loading
+async function loadSlots() {
+  const dateObj = state.date;
+  const token = ++state.loadToken;
+
   $('slotsSection').innerHTML = `
     <div class="slots-loading">
       <div class="spinner"></div>
       <span>Cargando horarios…</span>
     </div>`;
 
-  const dateStr = toLocalDateStr(dateObj);
-
   try {
-    const [booked, blocked] = await Promise.all([
-      DB.getAppointmentsForDate(dateStr),
-      DB.getBlockedForDate(dateStr)
-    ]);
-
-    state.bookedSlots = booked.map(a => a.appointment_time?.slice(0,5));
-    state.blockedSlots = blocked;
-    renderSlots(dateObj);
+    const busy = await fetchBusy(toLocalDateStr(dateObj));
+    if (token !== state.loadToken) return;
+    renderSlots(dateObj, freeSlots(dateObj, busy));
   } catch (err) {
+    console.error(err);
+    if (token !== state.loadToken) return;
     $('slotsSection').innerHTML = `
       <div class="slots-empty">
         <span>⚠️</span>
-        <span>No se pudieron cargar los horarios. Intenta de nuevo.</span>
+        <span>No se pudieron cargar los horarios. Revisa tu conexión.</span>
+        <button class="btn btn--ghost btn--sm" id="retrySlots">Reintentar</button>
       </div>`;
+    $('retrySlots').addEventListener('click', loadSlots);
   }
 }
 
-function isSlotBlocked(timeStr, blockedSlots) {
-  const toMin = t => {
-    const [h, m] = t.slice(0,5).split(':').map(Number);
-    return h * 60 + m;
-  };
-  const slotMin = toMin(timeStr);
-  return blockedSlots.some(b => {
-    const bStart = toMin(b.start_time);
-    const bEnd   = toMin(b.end_time);
-    return slotMin >= bStart && slotMin < bEnd;
-  });
-}
-
-function renderSlots(dateObj) {
-  const allSlots = generateSlots(dateObj);
+function renderSlots(dateObj, slots) {
   const section = $('slotsSection');
 
-  if (allSlots.length === 0) {
-    section.innerHTML = `<div class="slots-empty"><span>🚫</span><span>No hay turnos disponibles este día.</span></div>`;
+  if (slots.length === 0) {
+    section.innerHTML = `
+      <div class="slots-empty">
+        <span>😔</span>
+        <span>No quedan horarios libres para el ${escHtml(formatDateLong(dateObj))}. Prueba otro día.</span>
+      </div>`;
     return;
   }
 
-  const now = new Date();
-  const isToday = toLocalDateStr(dateObj) === toLocalDateStr(now);
-  const currentMin = now.getHours() * 60 + now.getMinutes();
-
-  const toMin = t => {
-    const [h, m] = t.split(':').map(Number);
-    return h * 60 + m;
-  };
-
-  const availableSlots = allSlots.filter(slot => {
-    const isTaken = state.bookedSlots.includes(slot) || isSlotBlocked(slot, state.blockedSlots);
-    if (isTaken) return false;
-
-    if (isToday) {
-      if (toMin(slot) <= currentMin) return false;
-    }
-    return true;
-  });
-
   section.innerHTML = `
-    <h4>Horarios disponibles — ${formatDateLong(dateObj)}</h4>
-    <div class="slots-grid" id="slotsGrid" role="listbox" aria-label="Horarios disponibles"></div>
-    ${availableSlots.length === 0 ? '<p class="slots-empty"><span>😔</span><span>No quedan turnos para este día.</span></p>' : ''}
-  `;
+    <h4>Horarios disponibles — ${escHtml(formatDateLong(dateObj))}</h4>
+    <div class="slots-grid" id="slotsGrid" role="group" aria-label="Horarios disponibles"></div>`;
 
   const grid = $('slotsGrid');
-  availableSlots.forEach(slot => {
+  slots.forEach(slot => {
     const btn = document.createElement('button');
+    btn.type = 'button';
     btn.className = 'slot-btn';
     btn.textContent = slot;
-    btn.setAttribute('role', 'option');
-    btn.setAttribute('aria-selected', 'false');
+    btn.setAttribute('aria-pressed', 'false');
     btn.setAttribute('aria-label', `Horario ${slot}`);
-
+    if (slot === state.timeSlot) {
+      btn.classList.add('selected');
+      btn.setAttribute('aria-pressed', 'true');
+    }
     btn.addEventListener('click', () => selectSlot(slot, btn));
     grid.appendChild(btn);
   });
+
+  // Si la hora elegida antes ya no está libre, se descarta
+  if (state.timeSlot && !slots.includes(state.timeSlot)) state.timeSlot = null;
+  $('step2Next').disabled = !state.timeSlot;
 }
 
 function selectSlot(slot, btnEl) {
   state.timeSlot = slot;
   document.querySelectorAll('.slot-btn').forEach(b => {
     b.classList.remove('selected');
-    b.setAttribute('aria-selected', 'false');
+    b.setAttribute('aria-pressed', 'false');
   });
   btnEl.classList.add('selected');
-  btnEl.setAttribute('aria-selected', 'true');
+  btnEl.setAttribute('aria-pressed', 'true');
   $('step2Next').disabled = false;
 }
 
@@ -365,97 +247,119 @@ function selectSlot(slot, btnEl) {
 function setStep(step) {
   state.step = step;
 
-  // Hide all panels
-  ['step1','step2','step3','stepConfirm'].forEach(id => {
-    $(id)?.classList.add('hidden');
-  });
-
-  // Show current
+  ['step1','step2','step3','stepConfirm'].forEach(id => $(id).classList.add('hidden'));
   const panels = { 1: 'step1', 2: 'step2', 3: 'step3', 4: 'stepConfirm' };
-  $(panels[step])?.classList.remove('hidden');
+  $(panels[step]).classList.remove('hidden');
 
-  // Progress indicators
   for (let i = 1; i <= 3; i++) {
     const ps = $(`ps${i}`);
-    ps?.classList.remove('active','done');
-    if (i < step) ps?.classList.add('done');
-    else if (i === step) ps?.classList.add('active');
+    ps.classList.remove('active', 'done');
+    if (i < step) ps.classList.add('done');
+    else if (i === step) ps.classList.add('active');
   }
-  for (let i = 1; i <= 2; i++) {
-    const pl = $(`pl${i}`);
-    pl?.classList.toggle('done', i < step);
-  }
+  for (let i = 1; i <= 2; i++) $(`pl${i}`).classList.toggle('done', i < step);
 
-  // Show/hide progress bar
-  const progressEl = document.querySelector('.modal__progress');
-  if (step === 4) {
-    progressEl?.classList.add('hidden');
+  document.querySelector('.modal__progress').classList.toggle('hidden', step === 4);
+  document.querySelector('.modal').scrollTop = 0;
+}
+
+function goToStep2() {
+  // Si la fecha elegida ya no sirve para el servicio (ej: promo solo mar–jue), se limpia
+  if (state.date && !isDateBookable(state.date)) {
+    state.date = null;
+    state.timeSlot = null;
+  }
+  setStep(2);
+  renderCalendar();
+  if (state.date) {
+    loadSlots(); // refresca: alguien pudo haber reservado mientras tanto
   } else {
-    progressEl?.classList.remove('hidden');
+    resetSlotsSection();
+    $('step2Next').disabled = true;
   }
 }
 
 function updateStep3Summary() {
   $('sumService').textContent = state.service?.name ?? '—';
   $('sumDate').textContent    = state.date ? formatDateShort(state.date) : '—';
-  $('sumTime').textContent    = state.timeSlot ?? '—';
+  $('sumTime').textContent    = state.timeSlot ? `${state.timeSlot} hrs` : '—';
 }
 
+let submitting = false;
+
 async function submitBooking() {
+  if (submitting) return;
+
   const name  = $('clientName').value.trim();
   const phone = $('clientPhone').value.trim();
   const notes = $('clientNotes').value.trim();
 
-  if (!name)  { showToast('Por favor ingresa tu nombre.', 'error'); $('clientName').focus(); return; }
-  if (!phone) { showToast('Por favor ingresa tu teléfono.', 'error'); $('clientPhone').focus(); return; }
+  if (name.length < 2) { showToast('Por favor ingresa tu nombre.', 'error'); $('clientName').focus(); return; }
+  if (!isValidPhone(phone)) { showToast('Ingresa un teléfono válido (ej: +56 9 1234 5678).', 'error'); $('clientPhone').focus(); return; }
 
+  submitting = true;
   const submitBtn = $('step3Submit');
-  const label     = $('submitLabel');
-  const spinner   = $('submitSpinner');
   submitBtn.disabled = true;
-  label.classList.add('hidden');
-  spinner.classList.remove('hidden');
+  $('submitLabel').classList.add('hidden');
+  $('submitSpinner').classList.remove('hidden');
 
   try {
-    const appt = await DB.createAppointment({
-      client_name:      name,
-      client_phone:     phone,
+    const id = await DB.createAppointment({
+      client_name:      name.slice(0, 100),
+      client_phone:     phone.slice(0, 30),
       service:          state.service.name,
       appointment_date: toLocalDateStr(state.date),
       appointment_time: state.timeSlot + ':00',
-      notes:            notes || null
+      notes:            notes ? notes.slice(0, 500) : null
     });
 
-    // Show confirmation
-    $('confirmCode').textContent = appt.id?.slice(-8).toUpperCase() ?? genCode();
-
-    $('confirmDetails').innerHTML = `
-      <div class="confirm-detail">
-        <span class="confirm-detail__icon">✂️</span>
-        <span class="confirm-detail__text">${state.service.name}</span>
-      </div>
-      <div class="confirm-detail">
-        <span class="confirm-detail__icon">📅</span>
-        <span class="confirm-detail__text">${formatDateShort(state.date)}</span>
-      </div>
-      <div class="confirm-detail">
-        <span class="confirm-detail__icon">🕐</span>
-        <span class="confirm-detail__text">${state.timeSlot} hs</span>
-      </div>
-      <div class="confirm-detail">
-        <span class="confirm-detail__icon">👤</span>
-        <span class="confirm-detail__text">${name}</span>
-      </div>
-    `;
-
+    showConfirmation(id, name);
     setStep(4);
   } catch (err) {
     console.error(err);
-    showToast('Hubo un error al reservar. Intenta de nuevo.', 'error');
+    if (isSlotTakenError(err)) {
+      showToast('Ese horario se acaba de ocupar. Elige otro, por favor.', 'error');
+      state.timeSlot = null;
+      goToStep2();
+    } else {
+      showToast('No se pudo reservar. Revisa tu conexión e intenta de nuevo.', 'error');
+    }
   } finally {
+    submitting = false;
     submitBtn.disabled = false;
-    label.classList.remove('hidden');
-    spinner.classList.add('hidden');
+    $('submitLabel').classList.remove('hidden');
+    $('submitSpinner').classList.add('hidden');
+  }
+}
+
+function showConfirmation(id, name) {
+  const code = id.replace(/-/g, '').slice(-6).toUpperCase();
+  $('confirmCode').textContent = code;
+
+  const details = [
+    ['✂️', state.service.name],
+    ['📅', formatDateShort(state.date)],
+    ['🕐', `${state.timeSlot} hrs`],
+    ['👤', name]
+  ];
+  if (CONFIG.business.address) details.push(['📍', CONFIG.business.address]);
+
+  $('confirmDetails').innerHTML = details.map(([icon, text]) => `
+    <div class="confirm-detail">
+      <span class="confirm-detail__icon">${icon}</span>
+      <span class="confirm-detail__text">${escHtml(text)}</span>
+    </div>`).join('');
+
+  // Botón para avisar/consultar por WhatsApp al barbero (si está configurado)
+  const wa = $('confirmWhatsapp');
+  if (CONFIG.business.whatsapp) {
+    const msg = `Hola! Reservé un turno en ${CONFIG.business.name}:\n` +
+      `• ${state.service.name}\n• ${formatDateShort(state.date)} a las ${state.timeSlot} hrs\n` +
+      `• A nombre de ${name}\nCódigo: ${code}`;
+    wa.href = `https://wa.me/${waNumber(CONFIG.business.whatsapp)}?text=${encodeURIComponent(msg)}`;
+    wa.classList.remove('hidden');
+  } else {
+    wa.classList.add('hidden');
   }
 }
 
@@ -469,38 +373,50 @@ function openModal() {
 function closeModal() {
   $('bookingModal').classList.remove('open');
   document.body.style.overflow = '';
-  // Reset state
+  const now = new Date();
   Object.assign(state, {
-    step: 1, service: null, date: null,
-    timeSlot: null, bookedSlots: [], blockedSlots: []
+    step: 1, service: null, date: null, timeSlot: null,
+    calYear: now.getFullYear(), calMonth: now.getMonth()
   });
-  $('contactForm')?.reset();
-  document.querySelectorAll('.service-card').forEach(c => c.classList.remove('selected'));
+  state.loadToken++;
+  $('contactForm').reset();
+  document.querySelectorAll('.service-card').forEach(c => {
+    c.classList.remove('selected');
+    c.setAttribute('aria-pressed', 'false');
+  });
   $('step1Next').disabled = true;
   $('step2Next').disabled = true;
+  resetSlotsSection();
+  updateHeroHint();
 }
 
 // ── SERVICES RENDER ───────────────────────────────────────────
+const DAY_NAMES = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+
 function renderServices() {
   const grid = $('servicesGrid');
   grid.innerHTML = '';
   CONFIG.services.forEach(svc => {
     const card = document.createElement('div');
     card.className = 'service-card';
-    card.setAttribute('role', 'option');
-    card.setAttribute('aria-selected', 'false');
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-pressed', 'false');
     card.setAttribute('tabindex', '0');
+    const daysNote = svc.days
+      ? `<div class="service-card__days">Solo ${svc.days.map(d => DAY_NAMES[d]).join(', ')}</div>`
+      : '';
     card.innerHTML = `
-      <span class="service-card__icon" aria-hidden="true">${svc.icon}</span>
+      <span class="service-card__icon" aria-hidden="true">${escHtml(svc.icon)}</span>
       <div class="service-card__info">
-        <div class="service-card__name">${svc.name}</div>
-        <div class="service-card__desc">${svc.description}</div>
+        <div class="service-card__name">${escHtml(svc.name)}</div>
+        <div class="service-card__desc">${escHtml(svc.description)}</div>
+        ${daysNote}
+        <div class="service-card__meta">
+          ${svc.price ? `<span class="service-card__price">${escHtml(svc.price)}</span>` : ''}
+          <span class="service-card__duration">⏱ ${svc.duration} min</span>
+        </div>
       </div>
-      <div class="service-card__meta">
-        <span class="service-card__duration">${svc.duration} min</span>
-        ${svc.price ? `<span class="service-card__price">${svc.price}</span>` : ''}
-        <span class="service-card__check" aria-hidden="true">✓</span>
-      </div>
+      <span class="service-card__check" aria-hidden="true">✓</span>
     `;
     card.addEventListener('click', () => selectService(svc, card));
     card.addEventListener('keydown', e => {
@@ -514,70 +430,58 @@ function selectService(svc, cardEl) {
   state.service = svc;
   document.querySelectorAll('.service-card').forEach(c => {
     c.classList.remove('selected');
-    c.setAttribute('aria-selected', 'false');
+    c.setAttribute('aria-pressed', 'false');
   });
   cardEl.classList.add('selected');
-  cardEl.setAttribute('aria-selected', 'true');
+  cardEl.setAttribute('aria-pressed', 'true');
   $('step1Next').disabled = false;
 }
 
 // ── HERO HINT ─────────────────────────────────────────────────
 async function updateHeroHint() {
   const today = new Date();
-  const dow = today.getDay();
-  if (!CONFIG.workingDays.includes(dow)) {
-    $('heroHint').textContent = 'Hoy no hay atención. Reserva para otro día.';
+  if (!CONFIG.workingDays.includes(today.getDay())) {
+    $('heroHint').textContent = 'Hoy no hay atención · Reserva para otro día';
     return;
   }
   try {
-    const dateStr = toLocalDateStr(today);
-    const [booked, blocked] = await Promise.all([
-      DB.getAppointmentsForDate(dateStr),
-      DB.getBlockedForDate(dateStr)
-    ]);
-    const slots  = generateSlots(today);
-    const taken  = booked.map(a => a.appointment_time?.slice(0,5));
-    
-    const currentMin = today.getHours() * 60 + today.getMinutes();
-    const toMin = t => {
-      const [h, m] = t.split(':').map(Number);
-      return h * 60 + m;
-    };
-
-    const avail = slots.filter(s => {
-      if (taken.includes(s)) return false;
-      if (isSlotBlocked(s, blocked)) return false;
-      if (toMin(s) <= currentMin) return false;
-      return true;
-    });
-
-    $('heroHint').textContent = avail.length > 0
-      ? `${avail.length} turno${avail.length !== 1 ? 's' : ''} disponible${avail.length !== 1 ? 's' : ''} hoy`
-      : 'Sin turnos disponibles hoy — reserva para mañana';
+    const avail = freeSlots(today, await fetchBusy(toLocalDateStr(today))).length;
+    $('heroHint').textContent = avail > 0
+      ? `${avail} horario${avail !== 1 ? 's' : ''} disponible${avail !== 1 ? 's' : ''} hoy`
+      : 'Sin horarios hoy · Reserva para otro día';
   } catch {
-    $('heroHint').textContent = 'Ver turnos disponibles →';
+    $('heroHint').textContent = 'Agenda tu hora en segundos';
   }
+}
+
+/** Dirección e Instagram bajo el botón (solo si están configurados) */
+function renderHeroInfo() {
+  const { address, instagram } = CONFIG.business;
+  const parts = [];
+  if (address) parts.push(`<span>📍 ${escHtml(address)}</span>`);
+  if (instagram) {
+    const user = instagram.replace(/^@/, '');
+    parts.push(`<a href="https://instagram.com/${encodeURIComponent(user)}" target="_blank" rel="noopener">📸 @${escHtml(user)}</a>`);
+  }
+  $('heroInfo').innerHTML = parts.join('');
 }
 
 // ── EVENT LISTENERS ───────────────────────────────────────────
 function initEvents() {
   $('openBookingBtn').addEventListener('click', openModal);
   $('closeModalBtn').addEventListener('click', closeModal);
-
-  // Close on overlay click
   $('bookingModal').addEventListener('click', e => {
     if (e.target === $('bookingModal')) closeModal();
   });
 
-  // Step navigation
-  $('step1Next').addEventListener('click', () => setStep(2));
+  $('step1Next').addEventListener('click', goToStep2);
   $('step2Back').addEventListener('click', () => setStep(1));
   $('step2Next').addEventListener('click', () => { updateStep3Summary(); setStep(3); });
-  $('step3Back').addEventListener('click', () => setStep(2));
+  $('step3Back').addEventListener('click', goToStep2);
   $('step3Submit').addEventListener('click', submitBooking);
+  $('contactForm').addEventListener('submit', e => { e.preventDefault(); submitBooking(); });
   $('confirmClose').addEventListener('click', closeModal);
 
-  // Calendar navigation
   $('calPrev').addEventListener('click', () => {
     state.calMonth--;
     if (state.calMonth < 0) { state.calMonth = 11; state.calYear--; }
@@ -589,24 +493,20 @@ function initEvents() {
     renderCalendar();
   });
 
-  // ESC to close
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && $('bookingModal').classList.contains('open')) closeModal();
   });
 }
 
 // ── INIT ──────────────────────────────────────────────────────
-async function init() {
-  DB.init();
+function init() {
+  if (IS_DEMO) $('demoBanner').classList.remove('hidden');
 
-  if (DB.isDemo) {
-    $('demoBanner').classList.remove('hidden');
-  }
-
+  renderHeroInfo();
   renderServices();
   renderCalendar();
   initEvents();
-  await updateHeroHint();
+  updateHeroHint();
 }
 
 document.addEventListener('DOMContentLoaded', init);

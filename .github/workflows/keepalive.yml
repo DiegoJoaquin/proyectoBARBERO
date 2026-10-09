@@ -1,0 +1,23 @@
+# Evita que Supabase (plan gratis) pause la base de datos por inactividad.
+# Hace una consulta liviana cada 3 días. Toma la URL y la clave pública de config.js.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '0 12 */3 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ping Supabase
+        run: |
+          URL=$(grep -oE "https://[a-z0-9]+\.supabase\.co" config.js | head -1)
+          KEY=$(grep -oE "eyJ[A-Za-z0-9._-]+" config.js | head -1)
+          curl -sf -X POST "$URL/rest/v1/rpc/get_busy_slots" \
+            -H "apikey: $KEY" -H "Authorization: Bearer $KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"p_date\":\"$(date +%F)\"}" > /dev/null
+          echo "Supabase OK"
