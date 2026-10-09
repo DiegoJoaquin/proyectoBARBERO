@@ -23,9 +23,9 @@ const CONFIG = {
   business: {
     name: 'Cortes Zahir',
     tagline: 'Estilo & Precisión',
-    address: '',          // Ej: 'Av. Siempre Viva 123, Santiago' (vacío = no se muestra)
-    whatsapp: '',         // Ej: '+56 9 1234 5678' (vacío = no se muestra el botón)
-    instagram: '@corteszahir'
+    address: 'Av.Irarrázaval 3054, Local 105B-112B, Ñuñoa',          // Ej: 'Av. Siempre Viva 123, Santiago' (vacío = no se muestra)
+    whatsapp: '+56945527756',         // Ej: '+56 9 1234 5678' (vacío = no se muestra el botón)
+    instagram: '@zahirfade_'
   },
 
   // ============================================================
